@@ -15,6 +15,7 @@ const {
   DASHBOARD_PORT,
   DASHBOARD_SESSION_SECRET
 } = require('../src/config/env');
+const { formatDateEs, isPastIsoDate } = require('../src/utils/dateEs');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const BOT_ENTRY = path.join(ROOT_DIR, 'src', 'index.js');
@@ -24,12 +25,18 @@ const LOCKFILE = path.join(ROOT_DIR, '.wwebjs_auth', 'session', 'lockfile');
 const SCHEDULE_DATES_FILE = path.join(ROOT_DIR, 'data', 'schedule-dates.json');
 const CONTACT_LINKS_FILE = path.join(ROOT_DIR, 'data', 'contact-links.json');
 
-// Los tres talleres que pueden tener una lista de "próximas fechas" en el
-// chat. La llave debe coincidir con src/config/knowledgeBase.js
-// (workshops.<llave>). El bot lee estas fechas al arrancar; si las cambias
-// acá, hace falta reiniciarlo para que las tome.
+// El único taller que sigue usando una lista fija de "próximas fechas" es
+// el Básico grupal. Avanzado y Personalizado son clases personalizadas: ya
+// no se les fija fecha aquí, se agendan por disponibilidad real (ver
+// BOOKING_WORKSHOP_LABELS y /api/bookings más abajo).
 const WORKSHOP_LABELS = {
-  basicGroup: 'MasterClass Básico (grupal)',
+  basicGroup: 'MasterClass Básico (grupal)'
+};
+
+// Talleres que usan la agenda por disponibilidad (cupo compartido de 2 por
+// día+jornada, calculado en conversationService.js). Solo para mostrar
+// etiquetas legibles en el calendario del panel.
+const BOOKING_WORKSHOP_LABELS = {
   advanced: 'MasterClass Avanzado',
   basicPersonalized: 'MasterClass Básico Personalizado'
 };
@@ -293,27 +300,6 @@ function writeScheduleDates(workshopKey, dates) {
   return current[workshopKey];
 }
 
-// Duplicado a propósito (igual que PAUSE_TTL_MS arriba) en vez de importar
-// knowledgeBase.js: así el panel no depende de cómo esté armado el objeto
-// KB del bot, solo de este formato de fecha simple.
-const WEEKDAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-
-function isPastIsoDate(isoDate) {
-  const [y, m, d] = isoDate.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return date < today;
-}
-function formatDateEs(isoDate) {
-  const [y, m, d] = isoDate.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  const currentYear = new Date().getFullYear();
-  const yearSuffix = y !== currentYear ? ` de ${y}` : '';
-  return `${WEEKDAYS_ES[date.getDay()]} ${d} de ${MONTHS_ES[m - 1]}${yearSuffix}`;
-}
-
 // =============================================================================
 // SERVIDOR WEB
 // =============================================================================
@@ -435,6 +421,27 @@ app.get('/api/escalations', (req, res) => {
   const links = readContactLinks();
   const list = (state.escalationHistory || []).map((e) => ({ ...e, chatLink: e.chatId ? buildChatLink(e.chatId, links) : null }));
   res.json({ escalations: list });
+});
+
+// Agenda de Avanzado/Personalizado (cupo compartido, calculado y guardado
+// por conversationService.js en cada reserva confirmada). Solo lectura,
+// igual que el resto de datos de bot-state.json.
+app.get('/api/bookings', (req, res) => {
+  const state = readBotState();
+  const links = readContactLinks();
+  const contactProfiles = state.contactProfiles || {};
+  const list = (state.bookings || []).map((b) => ({
+    ...b,
+    dateLabel: formatDateEs(b.date),
+    workshopLabel: BOOKING_WORKSHOP_LABELS[b.workshopKey] || b.product,
+    chatLink: buildChatLink(b.chatId, links),
+    nombre: contactProfiles[b.chatId]?.nombre || null
+  })).sort((a, b) => a.date === b.date ? (a.schedule || '').localeCompare(b.schedule || '') : a.date.localeCompare(b.date));
+  res.json({
+    bookings: list,
+    slotCapacity: state.bookingSlotCapacity || 2,
+    workshopLabels: BOOKING_WORKSHOP_LABELS
+  });
 });
 
 app.get('/api/config', (req, res) => {

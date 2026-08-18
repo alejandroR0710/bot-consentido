@@ -10,6 +10,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { formatDateEs, isPastIsoDate } = require('../utils/dateEs');
 
 const KB = {
   business: {
@@ -62,9 +63,9 @@ const KB = {
       schedules: ['9:00 a.m. a 1:00 p.m.', '3:00 p.m. a 7:00 p.m.'],
       includes: ['Materiales', 'Brunch', 'Certificado de asistencia'],
       techniques: ['Vela de molde', 'Vela aromatica en vaso', 'Wax Melts'],
-      // Si queda vacio, el cliente pasa directo a coordinar la fecha con
-      // un asesor (comportamiento actual). Editar desde el panel.
-      dates: [],
+      // Personalizado: no usa lista fija de fechas. El bot pregunta
+      // disponibilidad real (lunes a viernes) y agenda contra el cupo
+      // compartido en conversationService.js (bookings).
     },
     advanced: {
       name: 'MasterClass Avanzado',
@@ -78,9 +79,8 @@ const KB = {
         'Velas en cera gel',
         'Velas estilo Chantilly con acabado tipo postre',
       ],
-      // Si queda vacio, el cliente pasa directo a coordinar la fecha con
-      // un asesor (comportamiento actual). Editar desde el panel.
-      dates: [],
+      // Avanzado: mismo esquema de agenda por disponibilidad que
+      // Personalizado (comparten el mismo cupo, ver conversationService.js).
     },
   },
 
@@ -123,44 +123,30 @@ const KB = {
   },
 };
 
-const WEEKDAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-
 // data/schedule-dates.json guarda fechas reales en formato ISO
 // ("2026-08-30"), no el texto que se le muestra al cliente. Así se puede
 // comparar contra "hoy" y dejar de ofrecer automaticamente una fecha que
 // ya paso, sin que alguien tenga que acordarse de borrarla a mano.
-function isPastIsoDate(isoDate) {
-  const [y, m, d] = isoDate.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return date < today;
-}
-function formatDateEs(isoDate) {
-  const [y, m, d] = isoDate.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  const currentYear = new Date().getFullYear();
-  const yearSuffix = y !== currentYear ? ` de ${y}` : '';
-  return `${WEEKDAYS_ES[date.getDay()]} ${d} de ${MONTHS_ES[m - 1]}${yearSuffix}`;
-}
-
+//
 // Aplica las fechas guardadas desde el panel (si existen) por encima de los
-// valores de arriba. Sin este archivo, se usan los "dates" del objeto KB
-// (vacios por defecto). Las fechas ya vencidas se excluyen aquí mismo, asi
-// que el bot nunca las llega a ofrecer.
+// valores de arriba. Solo aplica a basicGroup: Avanzado y Personalizado ya
+// no usan lista fija (ver conversationService.js, flujo de agenda por
+// disponibilidad). Las fechas ya vencidas se excluyen aquí mismo, asi que
+// el bot nunca las llega a ofrecer.
 try {
   const overridesPath = path.resolve(__dirname, '..', '..', 'data', 'schedule-dates.json');
   if (fs.existsSync(overridesPath)) {
     const overrides = JSON.parse(fs.readFileSync(overridesPath, 'utf8'));
-    Object.entries(overrides).forEach(([workshopKey, isoDates]) => {
-      if (KB.workshops[workshopKey] && Array.isArray(isoDates)) {
-        KB.workshops[workshopKey].dates = isoDates
-          .filter((iso) => typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso) && !isPastIsoDate(iso))
-          .sort()
-          .map(formatDateEs);
-      }
-    });
+    // Solo basicGroup usa lista fija de fechas; aunque el archivo aun tenga
+    // entradas viejas de "advanced"/"basicPersonalized" (de antes del
+    // cambio a agenda por disponibilidad), se ignoran a proposito.
+    const isoDates = overrides.basicGroup;
+    if (KB.workshops.basicGroup && Array.isArray(isoDates)) {
+      KB.workshops.basicGroup.dates = isoDates
+        .filter((iso) => typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso) && !isPastIsoDate(iso))
+        .sort()
+        .map(formatDateEs);
+    }
   }
 } catch (error) {
   console.warn('⚠️ No se pudo cargar data/schedule-dates.json:', error.message);

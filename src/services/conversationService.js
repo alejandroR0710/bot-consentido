@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { loadState, saveState } = require('./persistentStore');
 const KB = require('../config/knowledgeBase');
+const { isWeekday, toIsoDate, formatDateEs } = require('../utils/dateEs');
 
 const SESSION_TTL = 20 * 60 * 1000;
 const CONTACT_PROFILE_TTL = 30 * 24 * 60 * 60 * 1000;
@@ -583,6 +584,79 @@ function escalate(chatId, message) {
   return { reply: message, final: true, escalatedToAdvisor: true, advisorSummary, contactData: getContactProfile(chatId) };
 }
 
+// Agenda de talleres personalizados (Avanzado + Basico Personalizado). A
+// diferencia del Basico grupal (fechas fijas cargadas desde el panel), aqui
+// se negocia con el cliente un dia habil (lunes a viernes) real, respetando
+// un cupo compartido por dia+jornada entre ambos talleres: comparten el
+// mismo calendario porque compiten por la misma disponibilidad del equipo.
+const BOOKING_SLOT_CAPACITY = 2;
+const BOOKING_LOOKAHEAD_DAYS = 45; // hasta donde se buscan huecos disponibles
+const BOOKING_OPTIONS_TO_OFFER = 3; // cuantas fechas se muestran al cliente a la vez
+const BOOKING_MAX_DATES_SHOWN = 9; // si se agotan estas sin que ninguna sirva, se escala
+const bookings = []; // { id, chatId, product, workshopKey, schedule, date (ISO), createdAt }
+
+function countBookings(date, schedule) {
+  return bookings.filter((b) => b.date === date && b.schedule === schedule).length;
+}
+function isSlotAvailable(date, schedule) {
+  return countBookings(date, schedule) < BOOKING_SLOT_CAPACITY;
+}
+// Busca los proximos dias habiles (lunes a viernes) con cupo libre para la
+// jornada indicada, a partir de mañana. excludeDates evita repetir fechas
+// ya mostradas cuando el cliente pide mas opciones.
+function nextAvailableDates(schedule, howMany = BOOKING_OPTIONS_TO_OFFER, excludeDates = []) {
+  const results = [];
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  cursor.setDate(cursor.getDate() + 1);
+  for (let i = 0; i < BOOKING_LOOKAHEAD_DAYS && results.length < howMany; i++) {
+    const iso = toIsoDate(cursor);
+    if (isWeekday(iso) && !excludeDates.includes(iso) && isSlotAvailable(iso, schedule)) {
+      results.push(iso);
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return results;
+}
+function addBooking({ chatId, product, workshopKey, schedule, date }) {
+  const booking = {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    chatId,
+    product,
+    workshopKey,
+    schedule,
+    date,
+    createdAt: Date.now(),
+  };
+  bookings.push(booking);
+  persistNow(); // el panel de calendario lee data/bot-state.json.
+  return booking;
+}
+function getBookings() {
+  return bookings.slice();
+}
+
+// Ofrece hasta BOOKING_OPTIONS_TO_OFFER fechas disponibles para la jornada
+// elegida. Si ya no queda ninguna en el horizonte de busqueda, se coordina
+// directo con un asesor en vez de dejar al cliente sin opciones.
+function offerBookingDates(chatId, { product, workshopKey, schedule, excludeDates = [] }) {
+  const dates = nextAvailableDates(schedule, BOOKING_OPTIONS_TO_OFFER, excludeDates);
+  if (!dates.length) {
+    updateProfile(chatId, { status: 'Sin cupos disponibles - coordinar con asesor' });
+    return escalate(chatId, 'En este momento no tengo cupos disponibles en los proximos dias para esa jornada. 🌿 Voy a pasarte con alguien de nuestro equipo para buscar una fecha que te sirva.');
+  }
+  setSession(chatId, 'workshop_date_pick', { product, workshopKey, schedule, dates, excludeDates });
+  return {
+    reply: [
+      `Perfecto, ya tengo registrada tu preferencia: *${schedule}*.`,
+      '',
+      'Estos son los proximos dias habiles con cupo disponible:',
+      ...dates.map((iso, i) => `${i + 1}. 📅 ${formatDateEs(iso)}`),
+      `${dates.length + 1}. Ninguna me funciona`,
+    ].join('\n'),
+  };
+}
+
 function handleState(chatId, text, meta = {}) {
   const s = getSession(chatId);
   const state = s?.state;
@@ -648,44 +722,52 @@ function handleState(chatId, text, meta = {}) {
     if (!schedule) return retry(chatId, '¿Que jornada prefieres? 1. Mañana  2. Tarde');
     const workshopKey = state === 'advanced_schedule' ? 'advanced' : 'basicPersonalized';
     const product = KB.workshops[workshopKey].name;
-    const dates = KB.workshops[workshopKey].dates || [];
     updateProfile(chatId, { status: 'Jornada seleccionada' });
-    // Si hay fechas cargadas (panel -> "Fechas de agendamiento"), se elige
-    // una de la lista, igual que en el MasterClass Basico. Si no hay
-    // ninguna cargada, sigue el comportamiento de siempre: coordinar el
-    // dia directo con un asesor.
-    if (dates.length > 0) {
-      setSession(chatId, 'workshop_date_pick', { product, schedule, dates });
-      return {
-        reply: [
-          `Perfecto, ya tengo registrada tu preferencia: *${schedule}*.`,
-          '',
-          'Estas son nuestras proximas fechas disponibles:',
-          ...dates.map((dt, i) => `${i + 1}. 📅 ${dt}`),
-          `${dates.length + 1}. Ninguna me funciona`,
-        ].join('\n'),
-      };
-    }
-    setSession(chatId, 'personalized_reserve_confirm', { product, schedule });
-    return { reply: [`Perfecto, ya tengo registrada tu preferencia: *${schedule}*.`, '¿Deseas coordinar y reservar tu clase?', '1. Si, quiero coordinarla', '2. Tengo una pregunta'].join('\n') };
+    // Avanzado y Personalizado ya no usan una lista fija: se calculan los
+    // proximos dias habiles (lunes a viernes) con cupo libre en la agenda
+    // compartida (ver bookings mas arriba).
+    return offerBookingDates(chatId, { product, workshopKey, schedule });
   }
   if (state === 'workshop_date_pick') {
     const dates = d.dates || [];
     const n = numbered(text, dates.length + 1);
     if (!n) return retry(chatId, 'Elige una de las fechas por numero o la opcion “Ninguna me funciona”.');
     if (n === dates.length + 1) {
-      updateProfile(chatId, { status: 'Fecha no disponible - coordinar con asesor' });
-      return escalate(chatId, 'Quiero darte una fecha que sí te funcione. 🌿 Voy a pasarte con alguien de nuestro equipo para coordinar el día que mejor te sirva.');
+      // En vez de escalar de inmediato, se le siguen ofreciendo mas fechas
+      // (hay calendario abierto de por medio); solo se escala si ya se le
+      // mostraron muchas y ninguna sirvio.
+      const excludeDates = [...(d.excludeDates || []), ...dates];
+      if (excludeDates.length >= BOOKING_MAX_DATES_SHOWN) {
+        updateProfile(chatId, { status: 'Fecha no disponible - coordinar con asesor' });
+        return escalate(chatId, 'Quiero darte una fecha que sí te funcione. 🌿 Voy a pasarte con alguien de nuestro equipo para coordinar el día que mejor te sirva.');
+      }
+      return offerBookingDates(chatId, { product: d.product, workshopKey: d.workshopKey, schedule: d.schedule, excludeDates });
     }
     const date = dates[n - 1];
+    // Revalida el cupo por si alguien mas lo tomo mientras el cliente elegia.
+    if (!isSlotAvailable(date, d.schedule)) {
+      return offerBookingDates(chatId, { product: d.product, workshopKey: d.workshopKey, schedule: d.schedule, excludeDates: [...(d.excludeDates || []), date] });
+    }
     updateProfile(chatId, { status: 'Fecha seleccionada' });
-    setSession(chatId, 'personalized_reserve_confirm', { product: d.product, schedule: d.schedule, date });
-    return { reply: [`Perfecto. 🌿 Seleccionaste *${date}*.`, '¿Deseas coordinar y reservar tu clase?', '1. Si, quiero coordinarla', '2. Tengo una pregunta'].join('\n') };
+    setSession(chatId, 'personalized_reserve_confirm', { product: d.product, workshopKey: d.workshopKey, schedule: d.schedule, date });
+    return { reply: [`Perfecto. 🌿 Seleccionaste *${formatDateEs(date)}*.`, '¿Deseas coordinar y reservar tu clase?', '1. Si, quiero coordinarla', '2. Tengo una pregunta'].join('\n') };
   }
   if (state === 'personalized_reserve_confirm') {
     if (isYes(text)) {
-      updateProfile(chatId, { status: 'Coordinar fecha con asesor' });
-      return escalate(chatId, '¡Perfecto! 🌿 Voy a pasarte con alguien de nuestro equipo para revisar la disponibilidad del dia, coordinar el horario y continuar con tu reserva.');
+      if (!d.date) {
+        // Red de seguridad: si por algun motivo no quedo fecha en sesion,
+        // se coordina directo con un asesor en vez de fallar.
+        updateProfile(chatId, { status: 'Coordinar fecha con asesor' });
+        return escalate(chatId, '¡Perfecto! 🌿 Voy a pasarte con alguien de nuestro equipo para revisar la disponibilidad del dia, coordinar el horario y continuar con tu reserva.');
+      }
+      // Revalida el cupo justo antes de confirmar, por si se agoto mientras
+      // el cliente decidia si reservaba o no.
+      if (!isSlotAvailable(d.date, d.schedule)) {
+        return offerBookingDates(chatId, { product: d.product, workshopKey: d.workshopKey, schedule: d.schedule, excludeDates: [d.date] });
+      }
+      addBooking({ chatId, product: d.product, workshopKey: d.workshopKey, schedule: d.schedule, date: d.date });
+      updateProfile(chatId, { status: 'Reservado - coordinar con asesor' });
+      return escalate(chatId, `¡Perfecto! 🌿 Tu clase quedo agendada para el *${formatDateEs(d.date)}* en jornada de *${d.schedule}*. Voy a pasarte con alguien de nuestro equipo para confirmar los ultimos detalles y continuar con tu reserva.`);
     }
     if (isNoOrQuestion(text)) return { reply: 'Claro. Escríbeme tu pregunta y con gusto te ayudo antes de coordinar. 😊' };
     return retry(chatId, '¿Deseas coordinar y reservar tu clase? 1. Si  2. Tengo una pregunta');
@@ -982,6 +1064,10 @@ function serializeState() {
     pausedChats: Object.fromEntries(pausedChats),
     paymentReminderArmedAt: Object.fromEntries(paymentReminderArmedAt),
     escalationHistory,
+    bookings,
+    // El panel lee esto para saber cuantos cupos por dia+jornada mostrar,
+    // sin tener que duplicar el numero a mano en dos archivos.
+    bookingSlotCapacity: BOOKING_SLOT_CAPACITY,
   };
 }
 function hydrateState() {
@@ -998,6 +1084,7 @@ function hydrateState() {
   }
   Object.entries(state.paymentReminderArmedAt || {}).forEach(([k, v]) => paymentReminderArmedAt.set(k, v));
   if (Array.isArray(state.escalationHistory)) escalationHistory.push(...state.escalationHistory);
+  if (Array.isArray(state.bookings)) bookings.push(...state.bookings);
 }
 hydrateState();
 function persistNow() { saveState(serializeState()); }
@@ -1017,4 +1104,5 @@ module.exports = {
   isBotPaused,
   isResumeBotCommand,
   rearmPendingReminders,
+  getBookings,
 };

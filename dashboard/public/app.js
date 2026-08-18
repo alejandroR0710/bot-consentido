@@ -288,6 +288,136 @@ async function loadScheduleDates() {
   });
 }
 
+// ---------- agenda (Avanzado / Personalizado) ----------
+// Mismo utilitario de fecha local que en "fechas de agendamiento": se arma
+// año/mes/día a mano para no correrse un día por huso horario.
+function toIsoDateLocal(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+let calCursorDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let calSelectedIso = null;
+let calBookingsByDate = {};
+let calSlotCapacity = 2;
+
+function buildBookingsByDate(bookings) {
+  const map = {};
+  bookings.forEach((b) => {
+    if (!map[b.date]) map[b.date] = [];
+    map[b.date].push(b);
+  });
+  return map;
+}
+
+function renderCalendar() {
+  const grid = $('#calendarGrid');
+  grid.innerHTML = '';
+  const year = calCursorDate.getFullYear();
+  const month = calCursorDate.getMonth();
+  $('#calMonthLabel').textContent = `${MONTHS_ES[month][0].toUpperCase()}${MONTHS_ES[month].slice(1)} de ${year}`;
+
+  WEEKDAYS_ES.forEach((wd) => {
+    const el = document.createElement('div');
+    el.className = 'calendar-weekday';
+    el.textContent = wd.slice(0, 3);
+    grid.appendChild(el);
+  });
+
+  const firstDay = new Date(year, month, 1);
+  const startOffset = firstDay.getDay(); // 0 = domingo, igual que WEEKDAYS_ES
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayIso = toIsoDateLocal(new Date());
+
+  for (let i = 0; i < startOffset; i++) {
+    const filler = document.createElement('div');
+    filler.className = 'calendar-day is-empty';
+    grid.appendChild(filler);
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month, day);
+    const iso = toIsoDateLocal(date);
+    const dow = date.getDay();
+    const isWeekend = dow === 0 || dow === 6;
+    const dayBookings = calBookingsByDate[iso] || [];
+
+    const cell = document.createElement('div');
+    cell.className = 'calendar-day';
+    if (isWeekend) cell.classList.add('is-weekend');
+    if (iso < todayIso) cell.classList.add('is-past');
+    if (dayBookings.length) cell.classList.add('has-bookings');
+    if (iso === calSelectedIso) cell.classList.add('is-selected');
+
+    const num = document.createElement('div');
+    num.className = 'calendar-day-num';
+    num.textContent = String(day);
+    cell.appendChild(num);
+
+    if (dayBookings.length) {
+      const badges = document.createElement('div');
+      badges.className = 'calendar-day-badges';
+      const bySchedule = {};
+      dayBookings.forEach((b) => { bySchedule[b.schedule] = (bySchedule[b.schedule] || 0) + 1; });
+      Object.entries(bySchedule).forEach(([schedule, count]) => {
+        const badge = document.createElement('span');
+        badge.className = count >= calSlotCapacity ? 'calendar-badge is-full' : 'calendar-badge';
+        badge.textContent = `${schedule}: ${count}/${calSlotCapacity}`;
+        badges.appendChild(badge);
+      });
+      cell.appendChild(badges);
+      cell.addEventListener('click', () => {
+        calSelectedIso = iso;
+        renderCalendar();
+        renderDayDetail(iso);
+      });
+    }
+
+    grid.appendChild(cell);
+  }
+}
+
+function renderDayDetail(iso) {
+  const dayBookings = calBookingsByDate[iso] || [];
+  $('#calDayTitle').textContent = `Reservas del ${formatDateEs(iso)}`;
+  const tbody = $('#calDayTable tbody');
+  tbody.innerHTML = '';
+  $('#calDayEmpty').hidden = dayBookings.length > 0;
+  dayBookings.forEach((b) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${b.schedule || '—'}</td>
+      <td>${b.workshopLabel || b.product || '—'}</td>
+      <td>${b.nombre || '—'}</td>
+      <td class="link-cell">${chatLinkCell(b.chatId, b.chatLink)}</td>
+      <td>${new Date(b.createdAt).toLocaleString('es-CO')}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function loadBookings() {
+  const res = await fetch('/api/bookings');
+  if (res.status === 401) return;
+  const { bookings, slotCapacity } = await res.json();
+  calSlotCapacity = slotCapacity || 2;
+  calBookingsByDate = buildBookingsByDate(bookings);
+  $('#agendaCapacityNote').textContent = `Cupo por día y jornada: ${calSlotCapacity}`;
+  renderCalendar();
+  if (calSelectedIso) renderDayDetail(calSelectedIso);
+}
+
+$('#calPrevBtn').addEventListener('click', () => {
+  calCursorDate = new Date(calCursorDate.getFullYear(), calCursorDate.getMonth() - 1, 1);
+  renderCalendar();
+});
+$('#calNextBtn').addEventListener('click', () => {
+  calCursorDate = new Date(calCursorDate.getFullYear(), calCursorDate.getMonth() + 1, 1);
+  renderCalendar();
+});
+
 // ---------- configuración ----------
 async function loadConfig() {
   const res = await fetch('/api/config');
@@ -334,9 +464,11 @@ async function refreshAll() {
 
 loadConfig();
 loadScheduleDates();
+loadBookings();
 refreshAll();
 setInterval(refreshStatus, 4000);
 setInterval(refreshLogs, 2500);
 setInterval(refreshPaused, 15000);
 setInterval(refreshContacts, 20000);
 setInterval(refreshEscalations, 20000);
+setInterval(loadBookings, 20000);
