@@ -22,6 +22,7 @@ const STATE_FILE = path.join(ROOT_DIR, 'data', 'bot-state.json');
 const ENV_FILE = path.join(ROOT_DIR, '.env');
 const LOCKFILE = path.join(ROOT_DIR, '.wwebjs_auth', 'session', 'lockfile');
 const SCHEDULE_DATES_FILE = path.join(ROOT_DIR, 'data', 'schedule-dates.json');
+const CONTACT_LINKS_FILE = path.join(ROOT_DIR, 'data', 'contact-links.json');
 
 // Los tres talleres que pueden tener una lista de "próximas fechas" en el
 // chat. La llave debe coincidir con src/config/knowledgeBase.js
@@ -192,6 +193,28 @@ function readBotState() {
   }
 }
 
+// chatId -> link wa.me ya resuelto (whatsappAlternative.js lo guarda ahí
+// cada vez que resuelve un contacto, incluidos los que llegan como @lid).
+function readContactLinks() {
+  try {
+    return JSON.parse(fs.readFileSync(CONTACT_LINKS_FILE, 'utf8'));
+  } catch (error) {
+    return {};
+  }
+}
+
+// Link wa.me para abrir el chat directo. Los ids @lid (identificador
+// interno de privacidad de WhatsApp) solo se pueden resolver a un número
+// real mientras el bot está conectado (whatsappAlternative.js los cachea
+// en data/contact-links.json); los que ya son un número normal se arman
+// directo, sin depender de esa caché.
+function buildChatLink(chatId, links) {
+  if (links[chatId]) return links[chatId];
+  if (chatId.endsWith('@lid')) return null;
+  const digits = chatId.replace(/\D/g, '');
+  return digits ? `https://wa.me/${digits}` : null;
+}
+
 // =============================================================================
 // EDICIÓN SEGURA DE .env — solo las llaves que el panel expone. Nunca toca
 // DASHBOARD_* ni ninguna otra que no esté en esta lista.
@@ -258,13 +281,37 @@ function readScheduleDates() {
   }
 }
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 function writeScheduleDates(workshopKey, dates) {
   if (!WORKSHOP_LABELS[workshopKey]) throw new Error(`Taller desconocido: ${workshopKey}`);
   const current = readScheduleDates();
-  current[workshopKey] = dates.filter((d) => typeof d === 'string' && d.trim()).map((d) => d.trim());
+  const clean = [...new Set(dates.filter((d) => typeof d === 'string' && ISO_DATE_RE.test(d)))].sort();
+  current[workshopKey] = clean;
   fs.mkdirSync(path.dirname(SCHEDULE_DATES_FILE), { recursive: true });
   fs.writeFileSync(SCHEDULE_DATES_FILE, JSON.stringify(current, null, 2), 'utf8');
   return current[workshopKey];
+}
+
+// Duplicado a propósito (igual que PAUSE_TTL_MS arriba) en vez de importar
+// knowledgeBase.js: así el panel no depende de cómo esté armado el objeto
+// KB del bot, solo de este formato de fecha simple.
+const WEEKDAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+function isPastIsoDate(isoDate) {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return date < today;
+}
+function formatDateEs(isoDate) {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const currentYear = new Date().getFullYear();
+  const yearSuffix = y !== currentYear ? ` de ${y}` : '';
+  return `${WEEKDAYS_ES[date.getDay()]} ${d} de ${MONTHS_ES[m - 1]}${yearSuffix}`;
 }
 
 // =============================================================================
@@ -354,9 +401,11 @@ app.get('/api/paused-chats', (req, res) => {
     ? rawPausedChats.map((chatId) => [chatId, Date.now()])
     : Object.entries(rawPausedChats || {});
   const contactProfiles = state.contactProfiles || {};
+  const links = readContactLinks();
   const now = Date.now();
   const list = entries.map(([chatId, pausedAt]) => ({
     chatId,
+    chatLink: buildChatLink(chatId, links),
     nombre: contactProfiles[chatId]?.nombre || null,
     pausedAt,
     msRemaining: Math.max(0, PAUSE_TTL_MS - (now - pausedAt))
@@ -374,15 +423,18 @@ app.post('/api/paused-chats/:chatId/resume', (req, res) => {
 app.get('/api/contacts', (req, res) => {
   const state = readBotState();
   const contactProfiles = state.contactProfiles || {};
+  const links = readContactLinks();
   const list = Object.entries(contactProfiles)
-    .map(([chatId, p]) => ({ chatId, ...p }))
+    .map(([chatId, p]) => ({ chatId, chatLink: buildChatLink(chatId, links), ...p }))
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   res.json({ contacts: list });
 });
 
 app.get('/api/escalations', (req, res) => {
   const state = readBotState();
-  res.json({ escalations: state.escalationHistory || [] });
+  const links = readContactLinks();
+  const list = (state.escalationHistory || []).map((e) => ({ ...e, chatLink: e.chatId ? buildChatLink(e.chatId, links) : null }));
+  res.json({ escalations: list });
 });
 
 app.get('/api/config', (req, res) => {
@@ -409,7 +461,11 @@ app.post('/api/config', (req, res) => {
 
 app.get('/api/schedule-dates', (req, res) => {
   const dates = readScheduleDates();
-  const workshops = Object.entries(WORKSHOP_LABELS).map(([key, label]) => ({ key, label, dates: dates[key] }));
+  const workshops = Object.entries(WORKSHOP_LABELS).map(([key, label]) => ({
+    key,
+    label,
+    dates: (dates[key] || []).map((iso) => ({ iso, label: formatDateEs(iso), expired: isPastIsoDate(iso) }))
+  }));
   res.json({ workshops });
 });
 

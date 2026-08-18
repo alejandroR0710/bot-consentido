@@ -123,16 +123,42 @@ const KB = {
   },
 };
 
+const WEEKDAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+// data/schedule-dates.json guarda fechas reales en formato ISO
+// ("2026-08-30"), no el texto que se le muestra al cliente. Así se puede
+// comparar contra "hoy" y dejar de ofrecer automaticamente una fecha que
+// ya paso, sin que alguien tenga que acordarse de borrarla a mano.
+function isPastIsoDate(isoDate) {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return date < today;
+}
+function formatDateEs(isoDate) {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const currentYear = new Date().getFullYear();
+  const yearSuffix = y !== currentYear ? ` de ${y}` : '';
+  return `${WEEKDAYS_ES[date.getDay()]} ${d} de ${MONTHS_ES[m - 1]}${yearSuffix}`;
+}
+
 // Aplica las fechas guardadas desde el panel (si existen) por encima de los
 // valores de arriba. Sin este archivo, se usan los "dates" del objeto KB
-// (vacios por defecto).
+// (vacios por defecto). Las fechas ya vencidas se excluyen aquí mismo, asi
+// que el bot nunca las llega a ofrecer.
 try {
   const overridesPath = path.resolve(__dirname, '..', '..', 'data', 'schedule-dates.json');
   if (fs.existsSync(overridesPath)) {
     const overrides = JSON.parse(fs.readFileSync(overridesPath, 'utf8'));
-    Object.entries(overrides).forEach(([workshopKey, dates]) => {
-      if (KB.workshops[workshopKey] && Array.isArray(dates)) {
-        KB.workshops[workshopKey].dates = dates;
+    Object.entries(overrides).forEach(([workshopKey, isoDates]) => {
+      if (KB.workshops[workshopKey] && Array.isArray(isoDates)) {
+        KB.workshops[workshopKey].dates = isoDates
+          .filter((iso) => typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso) && !isPastIsoDate(iso))
+          .sort()
+          .map(formatDateEs);
       }
     });
   }

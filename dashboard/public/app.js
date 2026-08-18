@@ -86,6 +86,15 @@ async function refreshLogs() {
   if ($('#autoScroll').checked && atBottom) view.scrollTop = view.scrollHeight;
 }
 
+// Celda "Chat" reutilizada en Pausados/Clientes/Escalamientos: link real
+// para abrir la conversación, o un aviso si todavía no se pudo resolver
+// (solo pasa con ids @lid mientras el bot no se ha conectado con ellos).
+function chatLinkCell(chatId, chatLink) {
+  return chatLink
+    ? `<a href="${chatLink}" target="_blank" rel="noopener">Abrir chat ↗</a>`
+    : `<span class="muted" title="${chatId}">Se resuelve cuando el bot esté conectado</span>`;
+}
+
 // ---------- chats pausados ----------
 function formatDuration(ms) {
   if (ms <= 0) return 'ya mismo';
@@ -105,11 +114,12 @@ async function refreshPaused() {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${c.nombre || '—'}</td>
-      <td class="mono">${c.chatId}</td>
+      <td class="link-cell">${chatLinkCell(c.chatId, c.chatLink)}</td>
       <td>${new Date(c.pausedAt).toLocaleString('es-CO')}</td>
       <td>${formatDuration(c.msRemaining)}</td>
       <td></td>
     `;
+    const actionCell = tr.lastElementChild;
     const btn = document.createElement('button');
     btn.className = 'btn btn-secondary';
     btn.textContent = 'Reactivar ahora';
@@ -117,10 +127,23 @@ async function refreshPaused() {
     btn.title = botRunning ? '' : 'Inicia el bot primero';
     btn.addEventListener('click', async () => {
       btn.disabled = true;
-      await fetch(`/api/paused-chats/${encodeURIComponent(c.chatId)}/resume`, { method: 'POST' });
-      refreshPaused();
+      btn.textContent = 'Reactivando…';
+      try {
+        const res = await fetch(`/api/paused-chats/${encodeURIComponent(c.chatId)}/resume`, { method: 'POST' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          actionCell.innerHTML = `<span class="error-text">${data.error || 'No se pudo reactivar.'}</span>`;
+          return;
+        }
+        // Confirmación inmediata en vez de esperar la siguiente consulta
+        // al servidor (que podía tardar y hacía parecer que no pasó nada).
+        actionCell.innerHTML = '<span class="success-text">✅ Reactivado</span>';
+        setTimeout(() => { tr.remove(); if (!$('#pausedTable tbody').children.length) $('#pausedEmpty').hidden = false; }, 1200);
+      } catch (error) {
+        actionCell.innerHTML = '<span class="error-text">Error de conexión.</span>';
+      }
     });
-    tr.lastElementChild.appendChild(btn);
+    actionCell.appendChild(btn);
     tbody.appendChild(tr);
   });
 }
@@ -137,7 +160,7 @@ async function refreshContacts() {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${c.nombre || '—'}</td>
-      <td class="mono">${c.chatId}</td>
+      <td class="link-cell">${chatLinkCell(c.chatId, c.chatLink)}</td>
       <td>${c.productoInteres || '—'}</td>
       <td>${c.status || '—'}</td>
       <td>${c.ciudad || '—'}</td>
@@ -160,6 +183,7 @@ async function refreshEscalations() {
     tr.innerHTML = `
       <td>${new Date(e.timestamp).toLocaleString('es-CO')}</td>
       <td>${e.nombre || '—'}</td>
+      <td class="link-cell">${chatLinkCell(e.chatId, e.chatLink)}</td>
       <td>${e.productoInteres || '—'}</td>
       <td>${e.motivo || '—'}</td>
     `;
@@ -221,8 +245,9 @@ async function loadScheduleDates() {
       }
       dates.forEach((date, idx) => {
         const chip = document.createElement('span');
-        chip.className = 'date-chip';
-        chip.textContent = date;
+        chip.className = date.expired ? 'date-chip date-chip-expired' : 'date-chip';
+        chip.textContent = date.expired ? `${date.label} (ya pasó)` : date.label;
+        chip.title = date.expired ? 'El bot ya no ofrece esta fecha por estar vencida. Puedes quitarla.' : '';
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
         removeBtn.setAttribute('aria-label', 'Quitar fecha');
@@ -238,7 +263,7 @@ async function loadScheduleDates() {
       const res2 = await fetch(`/api/schedule-dates/${w.key}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dates })
+        body: JSON.stringify({ dates: dates.map((d) => d.iso) })
       });
       if (res2.ok) {
         savedLabel.hidden = false;
@@ -248,9 +273,9 @@ async function loadScheduleDates() {
 
     addBtn.addEventListener('click', () => {
       if (!input.value) return;
-      const formatted = formatDateEs(input.value);
-      if (dates.includes(formatted)) { input.value = ''; return; }
-      dates.push(formatted);
+      if (dates.some((d) => d.iso === input.value)) { input.value = ''; return; }
+      dates.push({ iso: input.value, label: formatDateEs(input.value), expired: false });
+      dates.sort((a, b) => a.iso.localeCompare(b.iso));
       input.value = '';
       save();
     });

@@ -127,6 +127,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 1.5rem; display: flex; flex-d
 .date-chip { display: flex; align-items: center; gap: 0.4rem; background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 0.3rem 0.4rem 0.3rem 0.75rem; font-size: 0.82rem; }
 .date-chip button { background: none; border: none; color: inherit; cursor: pointer; font-size: 0.9rem; line-height: 1; padding: 0.1rem 0.3rem; border-radius: 50%; }
 .date-chip button:hover { background: rgba(0, 0, 0, 0.08); }
+.date-chip-expired { background: var(--danger-soft); color: var(--danger); text-decoration: line-through; opacity: 0.8; }
 .date-add-row { display: flex; gap: 0.5rem; }
 .date-add-row input { flex: 1; padding: 0.5rem 0.7rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--ink); font-size: 0.88rem; }
 .workshop-saved { font-size: 0.8rem; color: var(--ok); margin-left: 0.5rem; }

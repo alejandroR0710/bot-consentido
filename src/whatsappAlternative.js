@@ -162,19 +162,55 @@ async function sendAdvisorSummary(summary) {
 // es un identificador interno de privacidad — armar un link wa.me con esos
 // mismos dígitos NO es un número real y por eso "no está en WhatsApp".
 // client.getContactLidAndPhone() resuelve el número real detrás del lid.
+//
+// Los resultados se cachean en memoria y en disco (data/contact-links.json)
+// para no tener que resolver el mismo chat una y otra vez, y para que el
+// panel pueda mostrar el link aunque el bot esté apagado en ese momento.
+const CONTACT_LINKS_FILE = path.resolve(process.cwd(), 'data', 'contact-links.json');
+const contactLinksCache = new Map();
+
+function loadContactLinksFile() {
+  try {
+    return JSON.parse(fs.readFileSync(CONTACT_LINKS_FILE, 'utf8'));
+  } catch (error) {
+    return {};
+  }
+}
+(function hydrateContactLinksCache() {
+  Object.entries(loadContactLinksFile()).forEach(([chatId, link]) => contactLinksCache.set(chatId, link));
+})();
+
+function saveContactLink(chatId, link) {
+  contactLinksCache.set(chatId, link);
+  try {
+    const links = loadContactLinksFile();
+    links[chatId] = link;
+    fs.mkdirSync(path.dirname(CONTACT_LINKS_FILE), { recursive: true });
+    fs.writeFileSync(CONTACT_LINKS_FILE, JSON.stringify(links, null, 2), 'utf8');
+  } catch (error) {
+    console.warn('⚠️ No se pudo guardar data/contact-links.json:', error.message);
+  }
+}
+
 async function resolveWorkingChatLink(chatId) {
+  if (contactLinksCache.has(chatId)) return contactLinksCache.get(chatId);
+
+  let link = null;
   if (!String(chatId).endsWith('@lid')) {
     const digits = String(chatId || '').replace(/\D/g, '');
-    return digits ? `https://wa.me/${digits}` : null;
+    link = digits ? `https://wa.me/${digits}` : null;
+  } else {
+    try {
+      const [resolved] = await client.getContactLidAndPhone([chatId]);
+      const digits = String(resolved?.pn || '').replace(/\D/g, '');
+      link = digits ? `https://wa.me/${digits}` : null;
+    } catch (error) {
+      console.warn(`⚠️ No se pudo resolver el número real de ${chatId}:`, error.message);
+    }
   }
-  try {
-    const [resolved] = await client.getContactLidAndPhone([chatId]);
-    const digits = String(resolved?.pn || '').replace(/\D/g, '');
-    return digits ? `https://wa.me/${digits}` : null;
-  } catch (error) {
-    console.warn(`⚠️ No se pudo resolver el número real de ${chatId}:`, error.message);
-    return null;
-  }
+
+  if (link) saveContactLink(chatId, link);
+  return link;
 }
 
 // Reemplaza la línea "💬 *Chat:* ..." del reporte (armada en
@@ -249,6 +285,11 @@ client.on('message_create', async (msg) => {
   const result = handleConversation(msg.from, text);
   const { reply, pdfPath, imagePath, escalatedToAdvisor, advisorSummary, final, awaitingComprobante } = result;
   console.log(`🔁 Respuesta seleccionada: ${reply || 'none'} | pdfPath: ${pdfPath || 'none'} | imagePath: ${imagePath || 'none'}`);
+
+  // No se espera esta resolución (no debe frenar la respuesta al cliente):
+  // así, con el tiempo, el panel tiene el link real de cada cliente listado
+  // en "Clientes", no solo de los que llegaron a escalar.
+  resolveWorkingChatLink(msg.from).catch(() => {});
 
   if (escalatedToAdvisor && advisorSummary) {
     const fixedSummary = await fixAdvisorSummaryChatLink(advisorSummary, msg.from);

@@ -953,8 +953,17 @@ function rearmPendingReminders(sendMessage) {
 // Cada vez que respondes manualmente, se (re)marca la hora de pausa — si
 // sigues respondiendo activamente, el chat se mantiene apagado; si pasan
 // PAUSE_TTL_MS sin que vuelvas a escribir ahi, se reactiva solo.
-function pauseBot(chatId) { pausedChats.set(chatId, Date.now()); clearSession(chatId); clearFollowUps(chatId); clearPaymentReminder(chatId); }
-function resumeBot(chatId) { pausedChats.delete(chatId); }
+function pauseBot(chatId) {
+  pausedChats.set(chatId, Date.now());
+  clearSession(chatId);
+  clearFollowUps(chatId);
+  clearPaymentReminder(chatId);
+  persistNow(); // el panel lee data/bot-state.json; sin esto tardaba hasta 30s en reflejar el cambio.
+}
+function resumeBot(chatId) {
+  pausedChats.delete(chatId);
+  persistNow();
+}
 function isBotPaused(chatId) {
   const pausedAt = pausedChats.get(chatId);
   if (!pausedAt) return false;
@@ -991,7 +1000,8 @@ function hydrateState() {
   if (Array.isArray(state.escalationHistory)) escalationHistory.push(...state.escalationHistory);
 }
 hydrateState();
-const persistTimer = setInterval(() => saveState(serializeState()), 30000);
+function persistNow() { saveState(serializeState()); }
+const persistTimer = setInterval(persistNow, 30000);
 if (persistTimer.unref) persistTimer.unref();
 
 module.exports = {
