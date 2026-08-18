@@ -7,40 +7,71 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="login-body">
+  <div class="login-glow" aria-hidden="true"></div>
   <form id="loginForm" class="login-card">
-    <h1>🕯️ Con Sentido</h1>
+    <div class="login-badge">🕯️</div>
+    <h1>Con Sentido</h1>
     <p class="subtitle">Panel de administración del bot</p>
-    <label>Usuario
-      <input type="text" name="username" autocomplete="username" required />
+
+    <label>
+      <span class="field-label">Usuario</span>
+      <div class="input-wrap">
+        <span class="input-icon" aria-hidden="true">👤</span>
+        <input type="text" name="username" autocomplete="username" required autofocus />
+      </div>
     </label>
-    <label>Clave
-      <input type="password" name="password" autocomplete="current-password" required />
+    <label>
+      <span class="field-label">Clave</span>
+      <div class="input-wrap">
+        <span class="input-icon" aria-hidden="true">🔒</span>
+        <input type="password" name="password" autocomplete="current-password" required />
+      </div>
     </label>
-    <button type="submit">Entrar</button>
+
+    <button type="submit" id="loginSubmit" class="login-submit">Entrar</button>
     <p id="loginError" class="error-text" hidden></p>
   </form>
+
   <script>
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    const form = document.getElementById('loginForm');
+    const submitBtn = document.getElementById('loginSubmit');
+    const errorEl = document.getElementById('loginError');
+
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const form = new FormData(e.target);
-      const errorEl = document.getElementById('loginError');
+      const data = new FormData(e.target);
       errorEl.hidden = true;
+      submitBtn.disabled = true;
+      submitBtn.classList.add('is-loading');
+      const originalText = submitBtn.textContent;
+      submitBtn.textContent = 'Entrando…';
+
       try {
         const res = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: form.get('username'), password: form.get('password') })
+          body: JSON.stringify({ username: data.get('username'), password: data.get('password') })
         });
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          errorEl.textContent = data.error || 'No se pudo iniciar sesión.';
+          const json = await res.json().catch(() => ({}));
+          errorEl.textContent = json.error || 'No se pudo iniciar sesión.';
           errorEl.hidden = false;
+          form.classList.remove('shake');
+          // Forzar reflow para poder repetir la animación en intentos seguidos.
+          void form.offsetWidth;
+          form.classList.add('shake');
+          submitBtn.disabled = false;
+          submitBtn.classList.remove('is-loading');
+          submitBtn.textContent = originalText;
           return;
         }
         window.location.href = '/';
       } catch (err) {
         errorEl.textContent = 'Error de conexión con el panel.';
         errorEl.hidden = false;
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('is-loading');
+        submitBtn.textContent = originalText;
       }
     });
   </script>
