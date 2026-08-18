@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Con Sentido — Panel del bot</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🕯️ Con Sentido <span class="brand-sub">Panel del bot</span></div>
+    <div class="topbar-right">
+      <span id="statusPill" class="status-pill status-stopped">Cargando…</span>
+      <button id="logoutBtn" class="btn btn-ghost">Salir</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="estado">Estado</button>
+    <button class="tab-btn" data-tab="pausados">Chats pausados</button>
+    <button class="tab-btn" data-tab="clientes">Clientes</button>
+    <button class="tab-btn" data-tab="escalamientos">Escalamientos</button>
+    <button class="tab-btn" data-tab="fechas">Fechas de agendamiento</button>
+    <button class="tab-btn" data-tab="config">Configuración</button>
+  </nav>
+
+  <main>
+    <section id="tab-estado" class="tab-panel active">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Control del bot</h2>
+          <div class="control-row">
+            <button id="startBtn" class="btn btn-primary">▶ Iniciar</button>
+            <button id="stopBtn" class="btn btn-danger">■ Detener</button>
+            <button id="restartBtn" class="btn btn-secondary">⟳ Reiniciar</button>
+          </div>
+          <dl class="status-details">
+            <dt>Estado</dt><dd id="statusText">—</dd>
+            <dt>PID</dt><dd id="statusPid">—</dd>
+            <dt>Cuenta vinculada</dt><dd id="statusInfo">—</dd>
+          </dl>
+        </div>
+        <div class="card" id="qrCard" hidden>
+          <h2>Escanear QR</h2>
+          <p class="muted">Abre WhatsApp → Dispositivos vinculados → Vincular un dispositivo.</p>
+          <img id="qrImage" alt="Código QR" />
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header-row">
+          <h2>Registro en vivo</h2>
+          <label class="checkbox-label"><input type="checkbox" id="autoScroll" checked /> Auto-scroll</label>
+        </div>
+        <pre id="logView" class="log-view"></pre>
+      </div>
+    </section>
+
+    <section id="tab-pausados" class="tab-panel">
+      <div class="card">
+        <div class="card-header-row">
+          <h2>Chats pausados</h2>
+          <p class="muted">Se reactivan solos 24h después de tu último mensaje manual, o al tocar "Reactivar".</p>
+        </div>
+        <table class="data-table" id="pausedTable">
+          <thead><tr><th>Cliente</th><th>Chat</th><th>Pausado desde</th><th>Se reactiva en</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-state" id="pausedEmpty" hidden>No hay chats pausados en este momento.</p>
+      </div>
+    </section>
+
+    <section id="tab-clientes" class="tab-panel">
+      <div class="card">
+        <h2>Clientes</h2>
+        <table class="data-table" id="contactsTable">
+          <thead><tr><th>Nombre</th><th>Chat</th><th>Interés</th><th>Estado</th><th>Ciudad</th><th>Etiquetas</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-state" id="contactsEmpty" hidden>Todavía no hay clientes registrados.</p>
+      </div>
+    </section>
+
+    <section id="tab-escalamientos" class="tab-panel">
+      <div class="card">
+        <h2>Historial de escalamientos</h2>
+        <table class="data-table" id="escalationsTable">
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Interés</th><th>Motivo</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-state" id="escalationsEmpty" hidden>Todavía no hay escalamientos registrados.</p>
+      </div>
+    </section>
+
+    <section id="tab-fechas" class="tab-panel">
+      <div class="card">
+        <h2>Fechas de agendamiento</h2>
+        <p class="muted">
+          Las fechas que ofrece el bot al cliente en cada taller. Si un taller se queda sin fechas,
+          el bot pasa directo a coordinar el día con un asesor. Los cambios solo se aplican después de reiniciar el bot.
+        </p>
+        <div id="scheduleWorkshops" class="schedule-workshops"></div>
+      </div>
+    </section>
+
+    <section id="tab-config" class="tab-panel">
+      <div class="card">
+        <h2>Configuración</h2>
+        <p class="muted">Los cambios se guardan en <code>.env</code> pero solo se aplican después de reiniciar el bot.</p>
+        <form id="configForm" class="config-form">
+          <label class="checkbox-label">
+            <input type="checkbox" name="TEST_MODE_SELF_CHAT" />
+            Modo prueba (el bot responde a tus propios mensajes; desactívalo en producción)
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="RESET_WHATSAPP_SESSION" />
+            Borrar la sesión de WhatsApp al iniciar (pedirá escanear un QR nuevo)
+          </label>
+          <label>Número del asesor (opcional, formato 57300...@c.us)
+            <input type="text" name="ADVISOR_WHATSAPP_NUMBER" placeholder="Vacío = te llega a tu propio chat" />
+          </label>
+          <label>Enlace de invitación al grupo de WhatsApp
+            <input type="text" name="GROUP_INVITE_URL" />
+          </label>
+          <label>Nombre del bot
+            <input type="text" name="BOT_NAME" />
+          </label>
+          <button type="submit" class="btn btn-primary">Guardar cambios</button>
+          <p id="configSaved" class="success-text" hidden>Guardado. Reinicia el bot para aplicar los cambios.</p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

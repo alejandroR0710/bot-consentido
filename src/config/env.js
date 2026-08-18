@@ -15,5 +15,12 @@ module.exports = {
   // asesores, defínelo aquí (formato "57300...@c.us"). Si se deja vacío, el
   // resumen del cliente se envía a tu propio chat ("Mensajes a mí mismo"),
   // ya que hoy solo hay un número/dispositivo para todo.
-  ADVISOR_WHATSAPP_NUMBER: process.env.ADVISOR_WHATSAPP_NUMBER || ''
+  ADVISOR_WHATSAPP_NUMBER: process.env.ADVISOR_WHATSAPP_NUMBER || '',
+
+  // Panel de administración web (dashboard/). Usuario/clave para entrar,
+  // puerto donde corre, y el secreto para firmar la cookie de sesión.
+  DASHBOARD_USER: process.env.DASHBOARD_USER || 'admin',
+  DASHBOARD_PASSWORD: process.env.DASHBOARD_PASSWORD || '',
+  DASHBOARD_PORT: Number(process.env.DASHBOARD_PORT) || 4321,
+  DASHBOARD_SESSION_SECRET: process.env.DASHBOARD_SESSION_SECRET || ''
 };

@@ -1,0 +1,299 @@
+// Frontend del panel: vanilla JS, sin build step. Todo por fetch() a las
+// rutas /api/* del servidor (dashboard/server.js).
+
+const STATUS_LABELS = {
+  stopped: 'Apagado',
+  starting: 'Iniciando…',
+  qr: 'Esperando QR',
+  ready: 'Conectado',
+  disconnected: 'Desconectado',
+  logout: 'Sesión cerrada (LOGOUT)'
+};
+
+let lastLogTs = 0;
+
+function $(sel) { return document.querySelector(sel); }
+function $all(sel) { return document.querySelectorAll(sel); }
+
+// ---------- tabs ----------
+$all('.tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    $all('.tab-btn').forEach((b) => b.classList.remove('active'));
+    $all('.tab-panel').forEach((p) => p.classList.remove('active'));
+    btn.classList.add('active');
+    $(`#tab-${btn.dataset.tab}`).classList.add('active');
+  });
+});
+
+// ---------- logout ----------
+$('#logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/logout', { method: 'POST' });
+  window.location.href = '/login.html';
+});
+
+// ---------- control buttons ----------
+async function callAction(url) {
+  const res = await fetch(url, { method: 'POST' });
+  if (res.status === 401) { window.location.href = '/login.html'; return; }
+  await refreshStatus();
+}
+$('#startBtn').addEventListener('click', () => callAction('/api/start'));
+$('#stopBtn').addEventListener('click', () => callAction('/api/stop'));
+$('#restartBtn').addEventListener('click', () => callAction('/api/restart'));
+
+// ---------- status + qr ----------
+async function refreshStatus() {
+  const res = await fetch('/api/status');
+  if (res.status === 401) { window.location.href = '/login.html'; return; }
+  const data = await res.json();
+
+  const pill = $('#statusPill');
+  pill.textContent = STATUS_LABELS[data.status] || data.status;
+  pill.className = `status-pill status-${data.status}`;
+
+  $('#statusText').textContent = STATUS_LABELS[data.status] || data.status;
+  $('#statusPid').textContent = data.pid || '—';
+  $('#statusInfo').textContent = data.info ? (data.info.pushname || data.info.wid || '—') : '—';
+
+  $('#startBtn').disabled = data.running;
+  $('#stopBtn').disabled = !data.running;
+
+  const qrCard = $('#qrCard');
+  if (data.hasQr) {
+    qrCard.hidden = false;
+    const qrRes = await fetch('/api/qr');
+    if (qrRes.ok) {
+      const { dataUrl } = await qrRes.json();
+      $('#qrImage').src = dataUrl;
+    }
+  } else {
+    qrCard.hidden = true;
+  }
+}
+
+// ---------- logs ----------
+async function refreshLogs() {
+  const res = await fetch(`/api/logs?since=${lastLogTs}`);
+  if (res.status === 401) return;
+  const { lines } = await res.json();
+  if (!lines.length) return;
+  const view = $('#logView');
+  const atBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 40;
+  lines.forEach((l) => {
+    lastLogTs = Math.max(lastLogTs, l.ts);
+    view.textContent += (view.textContent ? '\n' : '') + l.text;
+  });
+  if ($('#autoScroll').checked && atBottom) view.scrollTop = view.scrollHeight;
+}
+
+// ---------- chats pausados ----------
+function formatDuration(ms) {
+  if (ms <= 0) return 'ya mismo';
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+async function refreshPaused() {
+  const res = await fetch('/api/paused-chats');
+  if (res.status === 401) return;
+  const { chats, botRunning } = await res.json();
+  const tbody = $('#pausedTable tbody');
+  tbody.innerHTML = '';
+  $('#pausedEmpty').hidden = chats.length > 0;
+  chats.forEach((c) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${c.nombre || '—'}</td>
+      <td class="mono">${c.chatId}</td>
+      <td>${new Date(c.pausedAt).toLocaleString('es-CO')}</td>
+      <td>${formatDuration(c.msRemaining)}</td>
+      <td></td>
+    `;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-secondary';
+    btn.textContent = 'Reactivar ahora';
+    btn.disabled = !botRunning;
+    btn.title = botRunning ? '' : 'Inicia el bot primero';
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      await fetch(`/api/paused-chats/${encodeURIComponent(c.chatId)}/resume`, { method: 'POST' });
+      refreshPaused();
+    });
+    tr.lastElementChild.appendChild(btn);
+    tbody.appendChild(tr);
+  });
+}
+
+// ---------- clientes ----------
+async function refreshContacts() {
+  const res = await fetch('/api/contacts');
+  if (res.status === 401) return;
+  const { contacts } = await res.json();
+  const tbody = $('#contactsTable tbody');
+  tbody.innerHTML = '';
+  $('#contactsEmpty').hidden = contacts.length > 0;
+  contacts.forEach((c) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${c.nombre || '—'}</td>
+      <td class="mono">${c.chatId}</td>
+      <td>${c.productoInteres || '—'}</td>
+      <td>${c.status || '—'}</td>
+      <td>${c.ciudad || '—'}</td>
+      <td>${(c.tags || []).join(', ') || '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ---------- escalamientos ----------
+async function refreshEscalations() {
+  const res = await fetch('/api/escalations');
+  if (res.status === 401) return;
+  const { escalations } = await res.json();
+  const tbody = $('#escalationsTable tbody');
+  tbody.innerHTML = '';
+  $('#escalationsEmpty').hidden = escalations.length > 0;
+  escalations.forEach((e) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${new Date(e.timestamp).toLocaleString('es-CO')}</td>
+      <td>${e.nombre || '—'}</td>
+      <td>${e.productoInteres || '—'}</td>
+      <td>${e.motivo || '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ---------- fechas de agendamiento ----------
+async function loadScheduleDates() {
+  const res = await fetch('/api/schedule-dates');
+  if (res.status === 401) return;
+  const { workshops } = await res.json();
+  const container = $('#scheduleWorkshops');
+  container.innerHTML = '';
+
+  workshops.forEach((w) => {
+    let dates = [...w.dates];
+
+    const block = document.createElement('div');
+    block.className = 'schedule-workshop';
+    block.innerHTML = `
+      <h3>${w.label} <span class="workshop-saved" hidden>Guardado ✓</span></h3>
+      <div class="date-chip-list"></div>
+      <div class="date-add-row">
+        <input type="text" placeholder="Ej: Domingo 26 de julio" />
+        <button class="btn btn-secondary" type="button">Agregar</button>
+      </div>
+    `;
+    const chipList = block.querySelector('.date-chip-list');
+    const input = block.querySelector('input');
+    const addBtn = block.querySelector('button');
+    const savedLabel = block.querySelector('.workshop-saved');
+
+    function renderChips() {
+      chipList.innerHTML = '';
+      if (!dates.length) {
+        const empty = document.createElement('span');
+        empty.className = 'muted';
+        empty.textContent = 'Sin fechas cargadas: el bot pasa directo a coordinar con un asesor.';
+        chipList.appendChild(empty);
+        return;
+      }
+      dates.forEach((date, idx) => {
+        const chip = document.createElement('span');
+        chip.className = 'date-chip';
+        chip.textContent = date;
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.setAttribute('aria-label', 'Quitar fecha');
+        removeBtn.textContent = '✕';
+        removeBtn.addEventListener('click', () => { dates.splice(idx, 1); save(); });
+        chip.appendChild(removeBtn);
+        chipList.appendChild(chip);
+      });
+    }
+
+    async function save() {
+      renderChips();
+      const res2 = await fetch(`/api/schedule-dates/${w.key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dates })
+      });
+      if (res2.ok) {
+        savedLabel.hidden = false;
+        setTimeout(() => { savedLabel.hidden = true; }, 2500);
+      }
+    }
+
+    addBtn.addEventListener('click', () => {
+      const value = input.value.trim();
+      if (!value) return;
+      dates.push(value);
+      input.value = '';
+      save();
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addBtn.click(); }
+    });
+
+    renderChips();
+    container.appendChild(block);
+  });
+}
+
+// ---------- configuración ----------
+async function loadConfig() {
+  const res = await fetch('/api/config');
+  if (res.status === 401) return;
+  const { config } = await res.json();
+  const form = $('#configForm');
+  form.TEST_MODE_SELF_CHAT.checked = String(config.TEST_MODE_SELF_CHAT).toLowerCase() === 'true';
+  form.RESET_WHATSAPP_SESSION.checked = String(config.RESET_WHATSAPP_SESSION).toLowerCase() === 'true';
+  form.ADVISOR_WHATSAPP_NUMBER.value = config.ADVISOR_WHATSAPP_NUMBER || '';
+  form.GROUP_INVITE_URL.value = config.GROUP_INVITE_URL || '';
+  form.BOT_NAME.value = config.BOT_NAME || '';
+}
+
+$('#configForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const payload = {
+    TEST_MODE_SELF_CHAT: form.TEST_MODE_SELF_CHAT.checked ? 'true' : 'false',
+    RESET_WHATSAPP_SESSION: form.RESET_WHATSAPP_SESSION.checked ? 'true' : 'false',
+    ADVISOR_WHATSAPP_NUMBER: form.ADVISOR_WHATSAPP_NUMBER.value.trim(),
+    GROUP_INVITE_URL: form.GROUP_INVITE_URL.value.trim(),
+    BOT_NAME: form.BOT_NAME.value.trim()
+  };
+  const res = await fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (res.ok) {
+    const saved = $('#configSaved');
+    saved.hidden = false;
+    setTimeout(() => { saved.hidden = true; }, 4000);
+  }
+});
+
+// ---------- arranque ----------
+async function refreshAll() {
+  await refreshStatus();
+  await refreshLogs();
+  await refreshPaused();
+  await refreshContacts();
+  await refreshEscalations();
+}
+
+loadConfig();
+loadScheduleDates();
+refreshAll();
+setInterval(refreshStatus, 4000);
+setInterval(refreshLogs, 2500);
+setInterval(refreshPaused, 15000);
+setInterval(refreshContacts, 20000);
+setInterval(refreshEscalations, 20000);

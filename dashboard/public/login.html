@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Con Sentido — Panel del bot</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body class="login-body">
+  <form id="loginForm" class="login-card">
+    <h1>🕯️ Con Sentido</h1>
+    <p class="subtitle">Panel de administración del bot</p>
+    <label>Usuario
+      <input type="text" name="username" autocomplete="username" required />
+    </label>
+    <label>Clave
+      <input type="password" name="password" autocomplete="current-password" required />
+    </label>
+    <button type="submit">Entrar</button>
+    <p id="loginError" class="error-text" hidden></p>
+  </form>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const errorEl = document.getElementById('loginError');
+      errorEl.hidden = true;
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: form.get('username'), password: form.get('password') })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          errorEl.textContent = data.error || 'No se pudo iniciar sesión.';
+          errorEl.hidden = false;
+          return;
+        }
+        window.location.href = '/';
+      } catch (err) {
+        errorEl.textContent = 'Error de conexión con el panel.';
+        errorEl.hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>

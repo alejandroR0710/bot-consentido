@@ -29,6 +29,20 @@ if (RESET_WHATSAPP_SESSION) {
 
 console.log(`🧪 Modo test self-chat: ${TEST_MODE_SELF_CHAT ? 'ACTIVADO' : 'DESACTIVADO'}`);
 
+// Cuando el dashboard (dashboard/server.js) levanta este archivo como
+// proceso hijo con IPC habilitado, process.send existe y podemos avisarle
+// el estado en tiempo real (QR, listo, desconectado). Si se corre suelto
+// (npm start, sin dashboard) process.send es undefined y esto no hace nada.
+function ipcSend(type, data = {}) {
+  if (typeof process.send === 'function') {
+    try {
+      process.send({ type, ...data });
+    } catch (error) {
+      // El proceso padre pudo haberse desconectado; no es crítico.
+    }
+  }
+}
+
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
   puppeteer: {
@@ -40,17 +54,55 @@ const client = new Client({
 client.on('qr', (qr) => {
   console.log('📱 Escanea este QR con WhatsApp:');
   qrcode.generate(qr, { small: true });
+  ipcSend('qr', { qr });
 });
 
-// Único punto para enviar mensajes salientes que no son la respuesta directa
-// a un mensaje entrante (seguimientos automáticos, recordatorio de pago).
-const sendWhatsappMessage = (chatId, text) => client.sendMessage(chatId, text);
+// message_create se dispara tanto para tus mensajes manuales como para los
+// que el propio bot envía con client.sendMessage() — no hay forma de
+// distinguirlos por el evento en sí. Por eso, cada vez que EL BOT envía algo
+// a un chat, lo marcamos aquí un momento; si llega un message_create fromMe
+// para ese mismo chat mientras está marcado, sabemos que es nuestra propia
+// respuesta (no una intervención tuya) y no debe pausar nada.
+const botSendingTo = new Map(); // chatId -> cantidad de envíos del bot en curso
+const BOT_SEND_GRACE_MS = 4000;
+
+function markBotSending(chatId) {
+  botSendingTo.set(chatId, (botSendingTo.get(chatId) || 0) + 1);
+}
+function markBotSendDone(chatId) {
+  const remaining = (botSendingTo.get(chatId) || 1) - 1;
+  if (remaining > 0) {
+    botSendingTo.set(chatId, remaining);
+    return;
+  }
+  // No se borra de inmediato: el evento message_create de este mismo envío
+  // puede llegar con un poco de retraso respecto a cuando el Promise de
+  // sendMessage se resuelve aquí.
+  setTimeout(() => botSendingTo.delete(chatId), BOT_SEND_GRACE_MS);
+}
+function isBotCurrentlySendingTo(chatId) {
+  return botSendingTo.has(chatId);
+}
+
+// Único punto para enviar mensajes salientes (respuestas directas,
+// seguimientos automáticos, recordatorio de pago, resumen al asesor).
+// SIEMPRE se debe usar esta función en vez de client.sendMessage()
+// directo, para que el marcado de arriba funcione en todos los casos.
+async function sendWhatsappMessage(chatId, content, options) {
+  markBotSending(chatId);
+  try {
+    return await client.sendMessage(chatId, content, options);
+  } finally {
+    markBotSendDone(chatId);
+  }
+}
 
 client.on('ready', () => {
   console.log('✅ Cliente de WhatsApp listo.');
   // Si el proceso se reinició con seguimientos o recordatorios de pago
   // pendientes (guardados en disco), los retoma con el tiempo restante.
   rearmPendingReminders(sendWhatsappMessage);
+  ipcSend('ready', { info: client.info ? { pushname: client.info.pushname, wid: client.info.wid?._serialized } : null });
 });
 
 // Sin esto, si Puppeteer/WhatsApp Web pierde la conexión, el bot se queda
@@ -66,12 +118,14 @@ client.on('ready', () => {
 let reconnecting = false;
 client.on('disconnected', (reason) => {
   console.warn(`⚠️ Cliente desconectado (${reason}).`);
+  ipcSend('disconnected', { reason });
 
   if (reason === 'LOGOUT') {
     console.error(
       '❌ La sesión de WhatsApp se cerró (LOGOUT) y no es recuperable automáticamente. ' +
       'Reinicia el bot con RESET_WHATSAPP_SESSION=true para vincular un nuevo QR. No se reintentará solo.'
     );
+    ipcSend('logout');
     return;
   }
 
@@ -96,14 +150,50 @@ async function sendAdvisorSummary(summary) {
     return;
   }
   try {
-    await client.sendMessage(advisorChatId, summary);
+    await sendWhatsappMessage(advisorChatId, summary);
     console.log(`📋 Resumen del cliente enviado al asesor (${advisorChatId}).`);
   } catch (error) {
     console.error('❌ No se pudo enviar el resumen al asesor:', error);
   }
 }
 
-client.on('message', async (msg) => {
+// Con la migración de WhatsApp a "LID", muchos chats llegan con un id tipo
+// "60468928508029@lid" en vez del número de teléfono real (@c.us). Ese lid
+// es un identificador interno de privacidad — armar un link wa.me con esos
+// mismos dígitos NO es un número real y por eso "no está en WhatsApp".
+// client.getContactLidAndPhone() resuelve el número real detrás del lid.
+async function resolveWorkingChatLink(chatId) {
+  if (!String(chatId).endsWith('@lid')) {
+    const digits = String(chatId || '').replace(/\D/g, '');
+    return digits ? `https://wa.me/${digits}` : null;
+  }
+  try {
+    const [resolved] = await client.getContactLidAndPhone([chatId]);
+    const digits = String(resolved?.pn || '').replace(/\D/g, '');
+    return digits ? `https://wa.me/${digits}` : null;
+  } catch (error) {
+    console.warn(`⚠️ No se pudo resolver el número real de ${chatId}:`, error.message);
+    return null;
+  }
+}
+
+// Reemplaza la línea "💬 *Chat:* ..." del reporte (armada en
+// conversationService.js con el id crudo) por un link wa.me que sí abre el
+// chat de verdad, resolviendo el lid a número real cuando aplica.
+async function fixAdvisorSummaryChatLink(summary, chatId) {
+  const workingLink = await resolveWorkingChatLink(chatId);
+  const replacement = workingLink
+    ? `💬 *Chat:* ${workingLink}`
+    : `💬 *Chat:* (no se pudo resolver un número; id interno: ${chatId})`;
+  return summary.replace(/💬 \*Chat:\* .+/, replacement);
+}
+
+// message_create (no 'message'): 'message' de whatsapp-web.js SOLO se
+// dispara para mensajes que NO son tuyos (Client.js hace `if (msg.id.fromMe)
+// return;` antes de emitirlo). Con 'message' a secas, tus propios mensajes
+// (fromMe=true) nunca llegaban a este handler, así que la pausa manual
+// nunca se activaba. 'message_create' se dispara para ambos casos.
+client.on('message_create', async (msg) => {
   const body = msg.body || '';
   console.log(`📩 Mensaje entrante: from=${msg.from}, type=${msg.type}, isGroupMsg=${msg.isGroupMsg || false}, body=${body}`);
 
@@ -125,6 +215,14 @@ client.on('message', async (msg) => {
     // msg.to es el chat del cliente cuando el mensaje lo escribiste tú
     // (msg.from en ese caso es tu propio número, no sirve como chatId).
     const customerChatId = msg.to;
+
+    // Esta es la propia respuesta automática del bot (recién enviada con
+    // sendWhatsappMessage), no una intervención tuya: no debe pausar nada.
+    if (isBotCurrentlySendingTo(customerChatId)) {
+      console.log(`↩️ Ignorado: es una respuesta automática del bot para ${customerChatId}, no una intervención manual.`);
+      return;
+    }
+
     if (isResumeBotCommand(body)) {
       resumeBot(customerChatId);
       console.log(`✅ Bot reactivado manualmente para ${customerChatId}.`);
@@ -140,7 +238,9 @@ client.on('message', async (msg) => {
     return;
   }
 
-  if (isBotPaused(msg.from)) {
+  const paused = isBotPaused(msg.from);
+  console.log(`🔎 Chequeo de pausa: msg.from=${msg.from} | ¿pausado?=${paused}`);
+  if (paused) {
     console.log(`⛔ Ignorado: bot pausado manualmente para ${msg.from}.`);
     return;
   }
@@ -151,7 +251,9 @@ client.on('message', async (msg) => {
   console.log(`🔁 Respuesta seleccionada: ${reply || 'none'} | pdfPath: ${pdfPath || 'none'} | imagePath: ${imagePath || 'none'}`);
 
   if (escalatedToAdvisor && advisorSummary) {
-    await sendAdvisorSummary(advisorSummary);
+    const fixedSummary = await fixAdvisorSummaryChatLink(advisorSummary, msg.from);
+    await sendAdvisorSummary(fixedSummary);
+    ipcSend('escalated', { chatId: msg.from });
   }
 
   // Seguimiento automático (24h/3d/7d) si la conversación sigue abierta, y
@@ -169,7 +271,7 @@ client.on('message', async (msg) => {
 
   if (reply && !imagePath) {
     try {
-      await client.sendMessage(msg.from, reply);
+      await sendWhatsappMessage(msg.from, reply);
       console.log(`✅ Respondido a ${msg.from}`);
     } catch (error) {
       console.error('❌ No se pudo enviar la respuesta:', error);
@@ -179,7 +281,7 @@ client.on('message', async (msg) => {
   if (pdfPath) {
     try {
       const media = MessageMedia.fromFilePath(pdfPath);
-      await client.sendMessage(msg.from, media, { caption: 'Adjunto nuestro catálogo en PDF.' });
+      await sendWhatsappMessage(msg.from, media, { caption: 'Adjunto nuestro catálogo en PDF.' });
       console.log(`✅ PDF enviado a ${msg.from}`);
     } catch (error) {
       console.error('❌ No se pudo enviar el PDF:', error);
@@ -189,7 +291,7 @@ client.on('message', async (msg) => {
   if (imagePath) {
     try {
       const media = MessageMedia.fromFilePath(imagePath);
-      await client.sendMessage(msg.from, media, { caption: reply || 'Adjunto una imagen.' });
+      await sendWhatsappMessage(msg.from, media, { caption: reply || 'Adjunto una imagen.' });
       console.log(`✅ Imagen enviada a ${msg.from}`);
     } catch (error) {
       console.error('❌ No se pudo enviar la imagen:', error);
@@ -199,6 +301,18 @@ client.on('message', async (msg) => {
 
 client.on('auth_failure', (message) => {
   console.error('❌ Error de autenticación:', message);
+  ipcSend('auth_failure', { message });
+});
+
+// Comandos que el dashboard puede enviarle a este proceso por IPC (solo
+// existe process.on('message') cuando lo lanzó el dashboard como hijo).
+process.on('message', (msg) => {
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'resumeChat' && msg.chatId) {
+    resumeBot(msg.chatId);
+    console.log(`✅ Bot reactivado desde el panel para ${msg.chatId}.`);
+    ipcSend('chatResumed', { chatId: msg.chatId });
+  }
 });
 
 // Cuando el estado llega a LOGOUT, whatsapp-web.js intenta limpiar la
