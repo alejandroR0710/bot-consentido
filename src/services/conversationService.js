@@ -66,6 +66,15 @@ function containsAny(text, words) {
   const n = normalizeText(text);
   return words.some((w) => n.includes(normalizeText(w)));
 }
+// Como containsAny es un simple ".includes()", palabras cortas de una sola
+// palabra pueden matchear como subcadena de otras sin relacion (ej. la
+// palabra clave "persona" tambien "matcheaba" dentro de "personas",
+// "personalizada", etc.). Para esos casos puntuales se usa esta variante
+// con limite de palabra completa.
+function containsWord(text, words) {
+  const n = normalizeText(text);
+  return words.some((w) => new RegExp(`\\b${normalizeText(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(n));
+}
 function isGreeting(text) {
   return containsAny(text, ['hola', 'buenas', 'buenos dias', 'buenas tardes', 'buenas noches', 'hey']);
 }
@@ -85,7 +94,7 @@ function isComprobanteText(text) {
   return containsAny(text, ['comprobante', 'soporte de pago', 'ya pague', 'ya envie el pago', 'adjunto pago']);
 }
 function isHumanRequest(text) {
-  return containsAny(text, ['asesor', 'hablar con alguien', 'persona', 'humano']);
+  return containsAny(text, ['asesor', 'hablar con alguien', 'humano']) || containsWord(text, ['persona']);
 }
 
 function getSession(chatId) {
@@ -223,6 +232,16 @@ function detectInterest(text) {
   if (containsAny(text, ['bouquet', 'vela aromatica', 'vela decorativa', 'difusor', 'kit de regalo', 'regalo'])) return 'regalos';
   if (containsAny(text, ['recordatorio', 'matrimonio', 'baby shower', '15 anos', 'bautizo'])) return 'recordatorios';
   if (containsAny(text, ['club creativo', 'ninos', 'niños', 'ilustracion infantil'])) return 'club';
+  return null;
+}
+
+// Si el cliente ya nombra el taller especifico (no solo "taller"/"curso"
+// generico), se salta la pregunta "cual se parece mas a lo que buscas" y
+// se le manda directo la info + imagen de ese taller.
+function detectWorkshopShortcut(text) {
+  if (containsAny(text, ['masterclass basico', 'taller basico', 'curso basico', 'basico grupal', 'clases grupales', 'clase grupal', 'en grupo'])) return 'basic';
+  if (containsAny(text, ['masterclass avanzado', 'taller avanzado', 'curso avanzado', 'nivel avanzado'])) return 'advanced';
+  if (containsAny(text, ['masterclass personalizado', 'taller personalizado', 'curso personalizado', 'clases personalizadas', 'clase personalizada'])) return 'personalized';
   return null;
 }
 
@@ -366,6 +385,7 @@ function startExperience(chatId) {
       '',
       'Para personalizarla, cuéntame: ¿que ocasion quieren compartir o celebrar?',
     ].join('\n'),
+    imagePath: getImagePath('experiencia.jpeg'),
   };
 }
 function isBirthday(text) { return containsAny(text, ['cumple', 'cumpleanos', 'cumpleaños']); }
@@ -578,6 +598,18 @@ function handleState(chatId, text, meta = {}) {
     return goMain(chatId);
   }
   if (state === 'awaiting_interest') {
+    // El atajo por taller especifico se revisa antes que la categoria
+    // generica: frases como "clases personalizadas" no traen ninguna de
+    // las palabras que detectInterest usa para "talleres" (taller/curso/
+    // masterclass), asi que dependiendo solo de esa deteccion generica
+    // nunca se llegaba a ofrecer el taller correcto.
+    const shortcut = detectWorkshopShortcut(text);
+    if (shortcut) {
+      addTag(chatId, 'Talleres');
+      if (shortcut === 'basic') return basicInfo(chatId);
+      if (shortcut === 'advanced') return advancedInfo(chatId);
+      if (shortcut === 'personalized') return personalizedInfo(chatId);
+    }
     const i = detectInterest(text);
     if (!i) return { reply: 'Cuéntame un poco más: ¿buscas talleres, una experiencia, insumos, velas y regalos, recordatorios o el Club Creativo?' };
     if (i === 'talleres') return startTalleres(chatId);

@@ -168,6 +168,22 @@ async function refreshEscalations() {
 }
 
 // ---------- fechas de agendamiento ----------
+const WEEKDAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+// El <input type="date"> entrega "YYYY-MM-DD". Se construye con
+// año/mes/día por separado (en vez de `new Date(iso)`) para que quede en
+// hora local y no se corra un día por huso horario. El año solo se
+// muestra si es distinto al actual, para que fechas cercanas se lean
+// igual de naturales que las que ya se escribían a mano.
+function formatDateEs(isoDate) {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const currentYear = new Date().getFullYear();
+  const yearSuffix = y !== currentYear ? ` de ${y}` : '';
+  return `${WEEKDAYS_ES[date.getDay()]} ${d} de ${MONTHS_ES[m - 1]}${yearSuffix}`;
+}
+
 async function loadScheduleDates() {
   const res = await fetch('/api/schedule-dates');
   if (res.status === 401) return;
@@ -180,11 +196,12 @@ async function loadScheduleDates() {
 
     const block = document.createElement('div');
     block.className = 'schedule-workshop';
+    const todayIso = new Date().toISOString().slice(0, 10);
     block.innerHTML = `
       <h3>${w.label} <span class="workshop-saved" hidden>Guardado ✓</span></h3>
       <div class="date-chip-list"></div>
       <div class="date-add-row">
-        <input type="text" placeholder="Ej: Domingo 26 de julio" />
+        <input type="date" min="${todayIso}" />
         <button class="btn btn-secondary" type="button">Agregar</button>
       </div>
     `;
@@ -230,9 +247,10 @@ async function loadScheduleDates() {
     }
 
     addBtn.addEventListener('click', () => {
-      const value = input.value.trim();
-      if (!value) return;
-      dates.push(value);
+      if (!input.value) return;
+      const formatted = formatDateEs(input.value);
+      if (dates.includes(formatted)) { input.value = ''; return; }
+      dates.push(formatted);
       input.value = '';
       save();
     });
