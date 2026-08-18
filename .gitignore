@@ -1,0 +1,15 @@
+node_modules/
+.env
+auth_info/
+data/
+test/.tmp-test-state.json
+
+# Sesión autenticada de WhatsApp (whatsapp-web.js / Puppeteer). Nunca debe
+# subirse: contiene las credenciales con las que el bot queda logueado en
+# tu WhatsApp. Si esto se publica, cualquiera con el repo podría usar tu
+# sesión.
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Estado local de Claude Code, no es parte del proyecto en sí.
+.claude/
