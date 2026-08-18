@@ -7,30 +7,60 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="login-body">
-  <div class="login-glow" aria-hidden="true"></div>
-  <form id="loginForm" class="login-card">
-    <div class="login-badge">🕯️</div>
-    <h1>Con Sentido</h1>
-    <p class="subtitle">Panel de administración del bot</p>
+  <div class="login-shell">
 
-    <label>
-      <span class="field-label">Usuario</span>
-      <div class="input-wrap">
-        <span class="input-icon" aria-hidden="true">👤</span>
-        <input type="text" name="username" autocomplete="username" required autofocus />
+    <aside class="login-brand">
+      <div class="brand-sparkles" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span><span></span>
       </div>
-    </label>
-    <label>
-      <span class="field-label">Clave</span>
-      <div class="input-wrap">
-        <span class="input-icon" aria-hidden="true">🔒</span>
-        <input type="password" name="password" autocomplete="current-password" required />
-      </div>
-    </label>
 
-    <button type="submit" id="loginSubmit" class="login-submit">Entrar</button>
-    <p id="loginError" class="error-text" hidden></p>
-  </form>
+      <div class="brand-decor" aria-hidden="true">
+        <div class="flame-glow"></div>
+        <div class="flame"></div>
+        <div class="wick"></div>
+        <div class="candle-body"></div>
+      </div>
+
+      <div class="brand-content">
+        <h2>Con Sentido</h2>
+        <p>Velas artesanales hechas a mano en Bogotá, con calma y con intención.</p>
+        <ul class="brand-features">
+          <li><span>💬</span> Conversaciones con clientes</li>
+          <li><span>📅</span> Agenda de talleres</li>
+          <li><span>🧾</span> Reservas y pedidos</li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="login-form-panel">
+      <form id="loginForm" class="login-card">
+        <span class="login-eyebrow">Bienvenido de nuevo</span>
+        <h1>Acceso al panel</h1>
+        <p class="subtitle">Ingresa tus credenciales para continuar</p>
+
+        <label>
+          <span class="field-label">Usuario</span>
+          <div class="input-wrap">
+            <span class="input-icon" aria-hidden="true">👤</span>
+            <input type="text" name="username" autocomplete="username" required autofocus />
+          </div>
+        </label>
+        <label>
+          <span class="field-label">Clave</span>
+          <div class="input-wrap">
+            <span class="input-icon" aria-hidden="true">🔒</span>
+            <input type="password" name="password" autocomplete="current-password" required />
+          </div>
+        </label>
+
+        <button type="submit" id="loginSubmit" class="login-submit">Entrar</button>
+        <p id="loginError" class="error-text" hidden></p>
+      </form>
+
+      <p class="login-footnote">🔒 Acceso restringido — solo para el equipo de Con Sentido.</p>
+    </main>
+
+  </div>
 
   <script>
     const form = document.getElementById('loginForm');

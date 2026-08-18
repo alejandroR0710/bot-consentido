@@ -339,7 +339,13 @@ app.get('/login.html', (req, res) => {
 });
 
 app.use((req, res, next) => {
-  if (req.path === '/login.html' || req.path === '/api/login') return next();
+  // styles.css lo pide el navegador como recurso de /login.html (un
+  // <link>), no como navegación de página. Como esta puerta redirigia TODO
+  // lo que no fuera /login.html o /api/login de vuelta a /login.html, el
+  // navegador recibia el HTML de la propia página de login en vez del CSS
+  // al pedir "styles.css" (y lo descartaba por no ser CSS válido): por eso
+  // el login se veía sin ningún estilo pese a que el archivo sí lo tenía.
+  if (req.path === '/login.html' || req.path === '/api/login' || req.path === '/styles.css') return next();
   return requireAuth(req, res, next);
 });
 

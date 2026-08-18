@@ -38,41 +38,94 @@
 body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--ink); }
 
 /* ---------- login ---------- */
-.login-body {
-  display: flex; align-items: center; justify-content: center; min-height: 100vh;
-  position: relative; overflow: hidden; padding: 1.5rem;
+.login-body { margin: 0; min-height: 100vh; }
+.login-shell { display: flex; min-height: 100vh; width: 100%; }
+
+/* ----- panel izquierdo: marca ilustrada ----- */
+.login-brand {
+  position: relative; overflow: hidden; flex: 0 0 44%; max-width: 480px;
+  display: flex; flex-direction: column; justify-content: center; gap: 2.5rem;
+  padding: 3rem 3rem; color: #fdf6ea;
   background:
-    radial-gradient(circle at 15% 20%, rgba(168, 98, 47, 0.14), transparent 45%),
-    radial-gradient(circle at 85% 80%, rgba(184, 134, 11, 0.12), transparent 45%),
-    var(--bg);
+    radial-gradient(circle at 15% 85%, rgba(255, 255, 255, 0.08), transparent 55%),
+    linear-gradient(155deg, #7c4222 0%, #a8622f 45%, #c98a3f 75%, #b8860b 100%);
 }
 @media (prefers-color-scheme: dark) {
-  .login-body {
+  .login-brand {
     background:
-      radial-gradient(circle at 15% 20%, rgba(214, 138, 82, 0.18), transparent 45%),
-      radial-gradient(circle at 85% 80%, rgba(224, 177, 60, 0.14), transparent 45%),
-      var(--bg);
+      radial-gradient(circle at 15% 85%, rgba(255, 255, 255, 0.06), transparent 55%),
+      linear-gradient(155deg, #4a2712 0%, #6e3c1f 45%, #8f5a24 75%, #7a5c0f 100%);
   }
 }
-/* Resplandor decorativo tipo "llama" detrás de la tarjeta, sutil y difuso. */
-.login-glow {
-  position: absolute; top: 50%; left: 50%; width: 480px; height: 480px;
-  transform: translate(-50%, -50%); border-radius: 50%;
-  background: radial-gradient(circle, var(--accent-soft) 0%, transparent 70%);
-  filter: blur(10px); opacity: 0.9; pointer-events: none;
-  animation: loginGlowPulse 6s ease-in-out infinite;
+
+/* motitas de luz flotando, tipo particulas de polvo cerca de la llama */
+.brand-sparkles { position: absolute; inset: 0; pointer-events: none; }
+.brand-sparkles span {
+  position: absolute; width: 5px; height: 5px; border-radius: 50%;
+  background: rgba(255, 224, 168, 0.85); box-shadow: 0 0 8px 2px rgba(255, 200, 120, 0.6);
+  animation: sparkleFloat 5.5s ease-in-out infinite;
 }
-@keyframes loginGlowPulse {
-  0%, 100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
-  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+.brand-sparkles span:nth-child(1) { left: 12%; top: 70%; animation-delay: 0s; }
+.brand-sparkles span:nth-child(2) { left: 78%; top: 60%; animation-delay: 0.8s; }
+.brand-sparkles span:nth-child(3) { left: 60%; top: 85%; animation-delay: 1.6s; }
+.brand-sparkles span:nth-child(4) { left: 30%; top: 30%; animation-delay: 2.3s; width: 3px; height: 3px; }
+.brand-sparkles span:nth-child(5) { left: 85%; top: 25%; animation-delay: 3.1s; width: 4px; height: 4px; }
+.brand-sparkles span:nth-child(6) { left: 45%; top: 15%; animation-delay: 1.1s; width: 3px; height: 3px; }
+@keyframes sparkleFloat {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0; }
+  15% { opacity: 1; }
+  50% { transform: translateY(-38px) scale(1.15); opacity: 0.9; }
+  85% { opacity: 0; }
 }
 
+/* velita CSS: resplandor + llama + pabilo + cuerpo de cera */
+.brand-decor { position: relative; display: flex; flex-direction: column; align-items: center; height: 150px; justify-content: flex-end; }
+.flame-glow {
+  position: absolute; bottom: 78px; left: 50%; width: 140px; height: 140px;
+  transform: translateX(-50%); border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 197, 100, 0.55) 0%, transparent 70%);
+  filter: blur(6px); animation: loginGlowPulse 3s ease-in-out infinite;
+}
+@keyframes loginGlowPulse {
+  0%, 100% { opacity: 0.65; transform: translateX(-50%) scale(1); }
+  50% { opacity: 1; transform: translateX(-50%) scale(1.12); }
+}
+.flame {
+  width: 24px; height: 38px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
+  background: radial-gradient(circle at 50% 32%, #fff8d8 0%, #ffd166 35%, #f2994a 68%, #d9622f 100%);
+  filter: drop-shadow(0 0 10px rgba(255, 176, 80, 0.85));
+  transform-origin: 50% 100%; animation: flameFlicker 2.6s ease-in-out infinite;
+}
+@keyframes flameFlicker {
+  0%, 100% { transform: scaleY(1) scaleX(1) rotate(0deg); }
+  25% { transform: scaleY(1.06) scaleX(0.94) rotate(-2deg); }
+  50% { transform: scaleY(0.95) scaleX(1.05) rotate(1.5deg); }
+  75% { transform: scaleY(1.04) scaleX(0.96) rotate(2deg); }
+}
+.wick { width: 2px; height: 8px; background: #4a3625; }
+.candle-body {
+  width: 58px; height: 92px; border-radius: 8px 8px 6px 6px;
+  background: linear-gradient(180deg, #fffaf0 0%, #f6e9cf 60%, #eeddb8 100%);
+  box-shadow: inset -8px 0 14px rgba(120, 90, 40, 0.18), 0 10px 22px -8px rgba(0, 0, 0, 0.35);
+}
+
+.brand-content h2 { margin: 0 0 0.6rem; font-size: 1.6rem; font-weight: 700; letter-spacing: 0.01em; }
+.brand-content p { margin: 0 0 1.4rem; font-size: 0.92rem; line-height: 1.5; color: rgba(253, 246, 234, 0.85); max-width: 30ch; }
+.brand-features { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.65rem; }
+.brand-features li {
+  display: flex; align-items: center; gap: 0.6rem; font-size: 0.86rem;
+  color: rgba(253, 246, 234, 0.92); background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 0.5rem 0.7rem; width: fit-content;
+}
+.brand-features li span { font-size: 1rem; }
+
+/* ----- panel derecho: formulario ----- */
+.login-form-panel {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1.25rem; padding: 2.5rem 1.5rem; background: var(--bg);
+}
 .login-card {
-  position: relative; z-index: 1;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
-  padding: 2.75rem 2.25rem; width: min(380px, 100%);
-  display: flex; flex-direction: column; align-items: center; gap: 1.1rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 20px 45px -20px rgba(38, 34, 28, 0.35);
+  width: min(360px, 100%); display: flex; flex-direction: column; gap: 1.1rem;
   animation: loginCardIn 0.5s ease both;
 }
 @keyframes loginCardIn {
@@ -87,13 +140,11 @@ body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--
   40%, 60% { transform: translateX(8px); }
 }
 
-.login-badge {
-  width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  font-size: 1.6rem; background: linear-gradient(160deg, var(--accent-soft), transparent);
-  border: 1px solid var(--border); box-shadow: 0 0 0 6px var(--accent-soft);
+.login-eyebrow {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent);
 }
-.login-card h1 { margin: 0; font-size: 1.3rem; font-weight: 700; letter-spacing: 0.01em; text-align: center; }
-.subtitle { margin: -0.6rem 0 0.25rem; color: var(--ink-soft); font-size: 0.88rem; text-align: center; }
+.login-card h1 { margin: 0.15rem 0 0; font-size: 1.5rem; font-weight: 700; letter-spacing: 0.01em; }
+.subtitle { margin: -0.3rem 0 0.35rem; color: var(--ink-soft); font-size: 0.88rem; }
 
 .login-card label { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.85rem; color: var(--ink-soft); width: 100%; }
 .field-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -104,20 +155,21 @@ body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--
 }
 .login-card input {
   width: 100%; padding: 0.7rem 0.8rem 0.7rem 2.3rem; border-radius: 9px; border: 1px solid var(--border);
-  background: var(--bg); color: var(--ink); font-size: 0.95rem; transition: border-color 0.15s, box-shadow 0.15s;
+  background: var(--surface); color: var(--ink); font-size: 0.95rem; transition: border-color 0.15s, box-shadow 0.15s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 .login-card input:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .login-submit {
-  width: 100%; margin-top: 0.35rem; border: none; border-radius: 9px; padding: 0.75rem 1rem;
+  width: 100%; margin-top: 0.35rem; border: none; border-radius: 9px; padding: 0.8rem 1rem;
   font-size: 0.95rem; font-weight: 600; color: #fff; cursor: pointer;
   background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 75%, black));
-  box-shadow: 0 8px 20px -8px var(--accent);
+  box-shadow: 0 10px 24px -10px var(--accent);
   transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
 }
-.login-submit:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 24px -8px var(--accent); }
+.login-submit:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 14px 28px -10px var(--accent); }
 .login-submit:active:not(:disabled) { transform: translateY(0); }
 .login-submit:disabled { opacity: 0.75; cursor: default; }
 .login-submit.is-loading { position: relative; color: transparent; }
@@ -128,7 +180,19 @@ body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--
 }
 @keyframes loginSpin { to { transform: rotate(360deg); } }
 
-.error-text { color: var(--danger); font-size: 0.85rem; margin: 0; text-align: center; }
+.login-footnote { margin: 0; font-size: 0.78rem; color: var(--ink-soft); text-align: center; }
+.login-card .error-text { text-align: center; }
+
+@media (max-width: 860px) {
+  .login-shell { flex-direction: column; }
+  .login-brand { max-width: none; flex: 0 0 auto; padding: 2.25rem 1.75rem; gap: 1.5rem; }
+  .brand-decor { height: 110px; }
+  .brand-content p { max-width: none; }
+  .brand-features { flex-direction: row; flex-wrap: wrap; }
+  .login-form-panel { padding: 2.25rem 1.5rem 3rem; }
+}
+
+.error-text { color: var(--danger); font-size: 0.85rem; margin: 0; }
 .success-text { color: var(--ok); font-size: 0.85rem; }
 
 /* ---------- layout ---------- */
