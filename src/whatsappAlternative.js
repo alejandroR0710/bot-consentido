@@ -55,9 +55,27 @@ client.on('ready', () => {
 
 // Sin esto, si Puppeteer/WhatsApp Web pierde la conexión, el bot se queda
 // callado indefinidamente hasta que alguien lo reinicie a mano.
+//
+// LOGOUT es un caso aparte: significa que la sesión ya no es válida (se
+// desvinculó el dispositivo desde el teléfono, o WhatsApp la cerró). En ese
+// caso NO hay que llamar a client.initialize() de nuevo — la sesión sigue
+// muerta, así que solo repite el mismo LOGOUT (o, como pasó una vez, choca
+// con la limpieza interna de whatsapp-web.js y tumba el proceso con un
+// EBUSY al borrar el lockfile). Hace falta un QR nuevo: se reintenta solo
+// para desconexiones recuperables (caída de red, etc.).
 let reconnecting = false;
 client.on('disconnected', (reason) => {
-  console.warn(`⚠️ Cliente desconectado (${reason}). Intentando reconectar en 10s...`);
+  console.warn(`⚠️ Cliente desconectado (${reason}).`);
+
+  if (reason === 'LOGOUT') {
+    console.error(
+      '❌ La sesión de WhatsApp se cerró (LOGOUT) y no es recuperable automáticamente. ' +
+      'Reinicia el bot con RESET_WHATSAPP_SESSION=true para vincular un nuevo QR. No se reintentará solo.'
+    );
+    return;
+  }
+
+  console.warn('Intentando reconectar en 10s...');
   if (reconnecting) return;
   reconnecting = true;
   setTimeout(() => {
@@ -181,6 +199,42 @@ client.on('message', async (msg) => {
 
 client.on('auth_failure', (message) => {
   console.error('❌ Error de autenticación:', message);
+});
+
+// Cuando el estado llega a LOGOUT, whatsapp-web.js intenta limpiar la
+// sesión internamente (LocalAuth.logout(), Client.js) SIN pasar por
+// nuestro manejador de 'disconnected' de arriba. En Windows, Chrome a
+// veces no libera el archivo del todo rápido, y ese borrado falla con
+// EBUSY. La sesión de todas formas ya quedó inválida (por eso avisamos
+// arriba que hace falta un QR nuevo); dejar que esto tumbe el proceso solo
+// agrega un crash extra y, peor, puede ser justo lo que deja el lockfile
+// en mal estado para el siguiente arranque. Se ignora puntualmente.
+function isBenignLockfileCleanupError(reason) {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  return message.includes('EBUSY') && message.toLowerCase().includes('lockfile');
+}
+
+// Red de seguridad: otros errores internos de whatsapp-web.js/Puppeteer
+// pueden escapar como excepción no capturada y tumbar el proceso con una
+// traza cruda. Esto al menos deja un log claro antes de salir; con
+// `node --watch` el proceso vuelve a levantar solo en el siguiente cambio
+// de archivo, y con un gestor de procesos (pm2, servicio de Windows) se
+// reiniciaría solo.
+process.on('uncaughtException', (error) => {
+  if (isBenignLockfileCleanupError(error)) {
+    console.warn('⚠️ No se pudo borrar el lockfile durante la limpieza interna de la sesión (no crítico):', error.message);
+    return;
+  }
+  console.error('❌ Error no capturado, cerrando el proceso:', error);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  if (isBenignLockfileCleanupError(reason)) {
+    console.warn('⚠️ No se pudo borrar el lockfile durante la limpieza interna de la sesión (no crítico):', reason instanceof Error ? reason.message : reason);
+    return;
+  }
+  console.error('❌ Promesa rechazada sin capturar, cerrando el proceso:', reason);
+  process.exit(1);
 });
 
 client.initialize().catch((error) => {
