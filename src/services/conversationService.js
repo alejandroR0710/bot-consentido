@@ -297,13 +297,13 @@ function basicInfo(chatId) {
   };
 }
 function showBasicDates(chatId) {
-  const dates = KB.workshops.basicGroup.dates || [];
+  const dates = KB.workshops.basicGroup.dates || []; // ISO ("2026-08-30")
   if (!dates.length) {
     updateProfile(chatId, { status: 'Fecha consultada' });
     return escalate(chatId, 'Quiero darte una fecha realmente disponible. 🌿 Voy a pasarte con alguien de nuestro equipo para revisar las proximas fechas del MasterClass Basico.');
   }
   setSession(chatId, 'basic_date_pick', { dates });
-  return { reply: ['Estas son nuestras proximas fechas disponibles:', ...dates.map((d, i) => `${i + 1}. 📅 ${d}`), `${dates.length + 1}. Ninguna me funciona`].join('\n') };
+  return { reply: ['Estas son nuestras proximas fechas disponibles:', ...dates.map((iso, i) => `${i + 1}. 📅 ${formatDateEs(iso)}`), `${dates.length + 1}. Ninguna me funciona`].join('\n') };
 }
 function advancedInfo(chatId) {
   const w = KB.workshops.advanced;
@@ -730,14 +730,14 @@ function handleState(chatId, text, meta = {}) {
     return retry(chatId, '¿Quieres conocer las proximas fechas? 1. Si  2. Tengo una pregunta');
   }
   if (state === 'basic_date_pick') {
-    const dates = d.dates || [];
+    const dates = d.dates || []; // ISO
     const n = numbered(text, dates.length + 1);
     if (!n) return retry(chatId, 'Elige una de las fechas por numero o la opcion “Ninguna me funciona”.');
     if (n === dates.length + 1) return personalizedInfo(chatId);
     const date = dates[n - 1];
-    setSession(chatId, 'reservation_confirm', { product: KB.workshops.basicGroup.name, date });
+    setSession(chatId, 'reservation_confirm', { product: KB.workshops.basicGroup.name, workshopKey: 'basicGroup', date });
     updateProfile(chatId, { status: 'Fecha seleccionada' });
-    return { reply: [`Perfecto. 🌿 Seleccionaste *${date}*.`, '¿Quieres reservar tu cupo?', '1. Si, quiero reservar', '2. Tengo una pregunta'].join('\n') };
+    return { reply: [`Perfecto. 🌿 Seleccionaste *${formatDateEs(date)}*.`, '¿Quieres reservar tu cupo?', '1. Si, quiero reservar', '2. Tengo una pregunta'].join('\n') };
   }
   if (state === 'advanced_schedule' || state === 'personalized_schedule') {
     const schedule = parseSchedule(text);
@@ -795,7 +795,16 @@ function handleState(chatId, text, meta = {}) {
     return retry(chatId, '¿Deseas coordinar y reservar tu clase? 1. Si  2. Tengo una pregunta');
   }
   if (state === 'reservation_confirm' || state === 'experience_reserve_confirm') {
-    if (isYes(text)) return startPayment(chatId);
+    if (isYes(text)) {
+      // El Basico grupal no pasa por el flujo de agenda por disponibilidad
+      // (no tiene cupo compartido, son fechas fijas), pero igual queda
+      // registrado en la Agenda del panel para que se vea quien se quiere
+      // inscribir a cada fecha, igual que Avanzado/Personalizado.
+      if (d.workshopKey === 'basicGroup' && d.date) {
+        addBooking({ chatId, product: d.product, workshopKey: 'basicGroup', schedule: null, date: d.date });
+      }
+      return startPayment(chatId);
+    }
     if (isNoOrQuestion(text)) return { reply: 'Claro. Escríbeme tu pregunta y con gusto te ayudo. 😊' };
     return retry(chatId, '¿Deseas reservar? 1. Si  2. Tengo una pregunta');
   }

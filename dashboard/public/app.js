@@ -359,14 +359,27 @@ function renderCalendar() {
     if (dayBookings.length) {
       const badges = document.createElement('div');
       badges.className = 'calendar-day-badges';
+
+      // El Basico grupal no tiene cupo compartido por jornada (son fechas
+      // fijas, sin limite de 2): se muestra aparte, solo como conteo de
+      // inscritos, para no mezclarlo con el cupo de Avanzado/Personalizado.
+      const scheduleBookings = dayBookings.filter((b) => b.workshopKey !== 'basicGroup');
+      const groupBookings = dayBookings.filter((b) => b.workshopKey === 'basicGroup');
+
       const bySchedule = {};
-      dayBookings.forEach((b) => { bySchedule[b.schedule] = (bySchedule[b.schedule] || 0) + 1; });
+      scheduleBookings.forEach((b) => { bySchedule[b.schedule] = (bySchedule[b.schedule] || 0) + 1; });
       Object.entries(bySchedule).forEach(([schedule, count]) => {
         const badge = document.createElement('span');
         badge.className = count >= calSlotCapacity ? 'calendar-badge is-full' : 'calendar-badge';
         badge.textContent = `${schedule}: ${count}/${calSlotCapacity}`;
         badges.appendChild(badge);
       });
+      if (groupBookings.length) {
+        const badge = document.createElement('span');
+        badge.className = 'calendar-badge calendar-badge-group';
+        badge.textContent = `🎓 Básico grupal: ${groupBookings.length}`;
+        badges.appendChild(badge);
+      }
       cell.appendChild(badges);
       cell.addEventListener('click', () => {
         calSelectedIso = iso;
@@ -407,7 +420,7 @@ function renderDayDetail(iso) {
   dayBookings.forEach((b) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${b.schedule || '—'}</td>
+      <td>${b.schedule || (b.workshopKey === 'basicGroup' ? 'Grupal (9am-3pm)' : '—')}</td>
       <td>${b.workshopLabel || b.product || '—'}</td>
       <td>${b.nombre || '—'}</td>
       <td class="link-cell">${chatLinkCell(b.chatId, b.chatLink)}</td>

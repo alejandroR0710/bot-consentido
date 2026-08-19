@@ -10,7 +10,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { formatDateEs, isPastIsoDate } = require('../utils/dateEs');
+const { isPastIsoDate } = require('../utils/dateEs');
 
 const KB = {
   business: {
@@ -53,6 +53,10 @@ const KB = {
       ],
       // Si queda vacio, Abby deriva al equipo en vez de ofrecer fechas.
       // Editar desde el panel (pestaña "Fechas de agendamiento"), no aquí.
+      // dates queda en formato ISO ("2026-08-30"); conversationService.js
+      // lo formatea a texto legible al mostrarlo (ver src/utils/dateEs.js).
+      // Se guarda asi (y no ya formateado) para poder anotar la fecha real
+      // de cada inscripcion en la Agenda del panel.
       dates: [],
     },
     basicPersonalized: {
@@ -142,10 +146,10 @@ try {
     // cambio a agenda por disponibilidad), se ignoran a proposito.
     const isoDates = overrides.basicGroup;
     if (KB.workshops.basicGroup && Array.isArray(isoDates)) {
+      // Se deja en ISO a proposito (ver comentario junto a "dates" arriba).
       KB.workshops.basicGroup.dates = isoDates
         .filter((iso) => typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso) && !isPastIsoDate(iso))
-        .sort()
-        .map(formatDateEs);
+        .sort();
     }
   }
 } catch (error) {

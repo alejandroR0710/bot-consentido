@@ -33,12 +33,15 @@ const WORKSHOP_LABELS = {
   basicGroup: 'MasterClass Básico (grupal)'
 };
 
-// Talleres que usan la agenda por disponibilidad (cupo compartido de 2 por
-// día+jornada, calculado en conversationService.js). Solo para mostrar
-// etiquetas legibles en el calendario del panel.
+// Talleres que aparecen en la Agenda del panel (pestaña "Agenda"). Avanzado
+// y Personalizado usan agenda por disponibilidad (cupo compartido de 2 por
+// día+jornada); Básico grupal usa las fechas fijas de arriba, pero igual
+// queda registrado aquí cada vez que alguien confirma su inscripción, para
+// poder ver quién se anotó a cada fecha. Solo etiquetas legibles.
 const BOOKING_WORKSHOP_LABELS = {
   advanced: 'MasterClass Avanzado',
-  basicPersonalized: 'MasterClass Básico Personalizado'
+  basicPersonalized: 'MasterClass Básico Personalizado',
+  basicGroup: 'MasterClass Básico (grupal)'
 };
 
 if (!DASHBOARD_PASSWORD) {

@@ -296,6 +296,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 1.5rem; display: flex; flex-d
 .calendar-day-badges { display: flex; flex-direction: column; gap: 0.2rem; }
 .calendar-badge { font-size: 0.68rem; border-radius: 5px; padding: 0.1rem 0.35rem; background: var(--accent-soft); color: var(--accent); }
 .calendar-badge.is-full { background: var(--danger-soft); color: var(--danger); }
+.calendar-badge.calendar-badge-group { background: var(--ok-soft); color: var(--ok); }
 
 /* ---------- pago / asistencia (detalle del día en Agenda) ---------- */
 .payment-select {
