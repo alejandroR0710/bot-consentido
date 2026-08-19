@@ -296,3 +296,14 @@ main { max-width: 1000px; margin: 0 auto; padding: 1.5rem; display: flex; flex-d
 .calendar-day-badges { display: flex; flex-direction: column; gap: 0.2rem; }
 .calendar-badge { font-size: 0.68rem; border-radius: 5px; padding: 0.1rem 0.35rem; background: var(--accent-soft); color: var(--accent); }
 .calendar-badge.is-full { background: var(--danger-soft); color: var(--danger); }
+
+/* ---------- pago / asistencia (detalle del día en Agenda) ---------- */
+.payment-select {
+  padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--ink); font-size: 0.82rem; font-weight: 600; cursor: pointer;
+}
+.payment-select.payment-pendiente { border-color: var(--warn); color: var(--warn); background: var(--warn-soft); }
+.payment-select.payment-abono { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.payment-select.payment-completo { border-color: var(--ok); color: var(--ok); background: var(--ok-soft); }
+.attendance-btn { font-size: 0.8rem; padding: 0.4rem 0.7rem; white-space: nowrap; }
+.attendance-btn.is-confirmed { background: var(--ok-soft); color: var(--ok); }

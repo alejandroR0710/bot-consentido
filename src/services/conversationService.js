@@ -593,7 +593,13 @@ const BOOKING_SLOT_CAPACITY = 2;
 const BOOKING_LOOKAHEAD_DAYS = 45; // hasta donde se buscan huecos disponibles
 const BOOKING_OPTIONS_TO_OFFER = 3; // cuantas fechas se muestran al cliente a la vez
 const BOOKING_MAX_DATES_SHOWN = 9; // si se agotan estas sin que ninguna sirva, se escala
-const bookings = []; // { id, chatId, product, workshopKey, schedule, date (ISO), createdAt }
+// { id, chatId, product, workshopKey, schedule, date (ISO), createdAt,
+//   payment ('pendiente'|'abono'|'completo'), attendanceConfirmed }
+const bookings = [];
+// El pago y la asistencia no los sabe el bot (se confirman por fuera, con
+// el asesor/comprobante); por eso no son parte del flujo automatico, sino
+// algo que se marca a mano desde el panel una vez que el asesor lo verifica.
+const PAYMENT_STATUSES = ['pendiente', 'abono', 'completo'];
 
 function countBookings(date, schedule) {
   return bookings.filter((b) => b.date === date && b.schedule === schedule).length;
@@ -627,6 +633,8 @@ function addBooking({ chatId, product, workshopKey, schedule, date }) {
     schedule,
     date,
     createdAt: Date.now(),
+    payment: 'pendiente',
+    attendanceConfirmed: false,
   };
   bookings.push(booking);
   persistNow(); // el panel de calendario lee data/bot-state.json.
@@ -634,6 +642,20 @@ function addBooking({ chatId, product, workshopKey, schedule, date }) {
 }
 function getBookings() {
   return bookings.slice();
+}
+// Lo llama el panel (via IPC, ver whatsappAlternative.js) cuando el asesor
+// marca a mano que el cliente abono, pago completo o confirmo asistencia.
+function updateBookingStatus(bookingId, patch = {}) {
+  const booking = bookings.find((b) => b.id === bookingId);
+  if (!booking) return null;
+  if (patch.payment !== undefined && PAYMENT_STATUSES.includes(patch.payment)) {
+    booking.payment = patch.payment;
+  }
+  if (patch.attendanceConfirmed !== undefined) {
+    booking.attendanceConfirmed = Boolean(patch.attendanceConfirmed);
+  }
+  persistNow();
+  return booking;
 }
 
 // Ofrece hasta BOOKING_OPTIONS_TO_OFFER fechas disponibles para la jornada
@@ -1105,4 +1127,5 @@ module.exports = {
   isResumeBotCommand,
   rearmPendingReminders,
   getBookings,
+  updateBookingStatus,
 };

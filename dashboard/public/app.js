@@ -379,6 +379,25 @@ function renderCalendar() {
   }
 }
 
+// Pago y asistencia no los sabe el bot (se confirman por fuera, con el
+// asesor); por eso se marcan a mano aquí. El servidor los guarda mandandole
+// un IPC al proceso del bot (igual que "Reactivar" en Chats pausados), asi
+// que sigue siendo el bot el unico que escribe data/bot-state.json.
+const PAYMENT_LABELS = { pendiente: 'Pendiente', abono: 'Abonó', completo: 'Pago completo' };
+
+async function saveBookingStatus(bookingId, patch) {
+  try {
+    const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch)
+    });
+    return res.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
 function renderDayDetail(iso) {
   const dayBookings = calBookingsByDate[iso] || [];
   $('#calDayTitle').textContent = `Reservas del ${formatDateEs(iso)}`;
@@ -393,7 +412,50 @@ function renderDayDetail(iso) {
       <td>${b.nombre || '—'}</td>
       <td class="link-cell">${chatLinkCell(b.chatId, b.chatLink)}</td>
       <td>${new Date(b.createdAt).toLocaleString('es-CO')}</td>
+      <td class="payment-cell"></td>
+      <td class="attendance-cell"></td>
     `;
+
+    const select = document.createElement('select');
+    select.className = `payment-select payment-${b.payment || 'pendiente'}`;
+    Object.entries(PAYMENT_LABELS).forEach(([value, label]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if ((b.payment || 'pendiente') === value) opt.selected = true;
+      select.appendChild(opt);
+    });
+    select.addEventListener('change', async () => {
+      const prev = b.payment || 'pendiente';
+      const next = select.value;
+      select.disabled = true;
+      const ok = await saveBookingStatus(b.id, { payment: next });
+      select.disabled = false;
+      if (ok) {
+        b.payment = next;
+        select.className = `payment-select payment-${next}`;
+      } else {
+        select.value = prev;
+      }
+    });
+    tr.querySelector('.payment-cell').appendChild(select);
+
+    const attBtn = document.createElement('button');
+    attBtn.type = 'button';
+    function paintAttendance() {
+      attBtn.className = b.attendanceConfirmed ? 'btn btn-secondary attendance-btn is-confirmed' : 'btn btn-ghost attendance-btn';
+      attBtn.textContent = b.attendanceConfirmed ? '✅ Asistió' : 'Confirmar asistencia';
+    }
+    paintAttendance();
+    attBtn.addEventListener('click', async () => {
+      const next = !b.attendanceConfirmed;
+      attBtn.disabled = true;
+      const ok = await saveBookingStatus(b.id, { attendanceConfirmed: next });
+      attBtn.disabled = false;
+      if (ok) { b.attendanceConfirmed = next; paintAttendance(); }
+    });
+    tr.querySelector('.attendance-cell').appendChild(attBtn);
+
     tbody.appendChild(tr);
   });
 }

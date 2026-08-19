@@ -11,7 +11,8 @@ const {
   scheduleFollowUps,
   clearFollowUps,
   schedulePaymentReminder,
-  rearmPendingReminders
+  rearmPendingReminders,
+  updateBookingStatus
 } = require('./services/conversationService');
 const { RESET_WHATSAPP_SESSION, TEST_MODE_SELF_CHAT, ADVISOR_WHATSAPP_NUMBER } = require('./config/env');
 
@@ -353,6 +354,14 @@ process.on('message', (msg) => {
     resumeBot(msg.chatId);
     console.log(`✅ Bot reactivado desde el panel para ${msg.chatId}.`);
     ipcSend('chatResumed', { chatId: msg.chatId });
+  }
+  // El panel no toca data/bot-state.json directamente (para no pisarse con
+  // este proceso, que lo guarda periodicamente); por eso el pago/asistencia
+  // que marca el asesor en la pestaña Agenda se manda por IPC hasta acá.
+  if (msg.type === 'updateBookingStatus' && msg.bookingId) {
+    const updated = updateBookingStatus(msg.bookingId, msg.patch || {});
+    if (updated) console.log(`✅ Reserva ${msg.bookingId} actualizada desde el panel (pago=${updated.payment}, asistencia=${updated.attendanceConfirmed}).`);
+    ipcSend('bookingStatusUpdated', { bookingId: msg.bookingId, ok: Boolean(updated) });
   }
 });
 
