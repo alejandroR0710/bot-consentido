@@ -430,6 +430,42 @@ function renderDayDetail(iso) {
       <td class="attendance-cell"></td>
     `;
 
+    const amountCell = tr.querySelector('.amount-cell');
+    // El monto abonado solo tiene sentido si el estado es "Abonó": para
+    // Pendiente o Pago completo no se muestra el campo, solo un guion.
+    function paintAmountCell() {
+      amountCell.innerHTML = '';
+      if (b.payment !== 'abono') {
+        const dash = document.createElement('span');
+        dash.className = 'muted';
+        dash.textContent = '—';
+        amountCell.appendChild(dash);
+        return;
+      }
+      const amountInput = document.createElement('input');
+      amountInput.type = 'number';
+      amountInput.min = '0';
+      amountInput.step = '1000';
+      amountInput.placeholder = '0';
+      amountInput.className = 'amount-input';
+      if (b.depositAmount !== null && b.depositAmount !== undefined) amountInput.value = b.depositAmount;
+      amountInput.addEventListener('change', async () => {
+        const raw = amountInput.value.trim();
+        const prev = b.depositAmount;
+        const next = raw === '' ? null : Number(raw);
+        amountInput.disabled = true;
+        const ok = await saveBookingStatus(b.id, { depositAmount: next });
+        amountInput.disabled = false;
+        if (ok) {
+          b.depositAmount = next;
+        } else {
+          amountInput.value = prev !== null && prev !== undefined ? prev : '';
+        }
+      });
+      amountCell.appendChild(amountInput);
+    }
+    paintAmountCell();
+
     const select = document.createElement('select');
     select.className = `payment-select payment-${b.payment || 'pendiente'}`;
     Object.entries(PAYMENT_LABELS).forEach(([value, label]) => {
@@ -448,35 +484,12 @@ function renderDayDetail(iso) {
       if (ok) {
         b.payment = next;
         select.className = `payment-select payment-${next}`;
+        paintAmountCell();
       } else {
         select.value = prev;
       }
     });
     tr.querySelector('.payment-cell').appendChild(select);
-
-    // Cuánto abonó (en pesos). Se guarda al salir del campo o con Enter,
-    // no en cada tecla, para no mandar una petición por cada dígito.
-    const amountInput = document.createElement('input');
-    amountInput.type = 'number';
-    amountInput.min = '0';
-    amountInput.step = '1000';
-    amountInput.placeholder = '0';
-    amountInput.className = 'amount-input';
-    if (b.depositAmount !== null && b.depositAmount !== undefined) amountInput.value = b.depositAmount;
-    amountInput.addEventListener('change', async () => {
-      const raw = amountInput.value.trim();
-      const prev = b.depositAmount;
-      const next = raw === '' ? null : Number(raw);
-      amountInput.disabled = true;
-      const ok = await saveBookingStatus(b.id, { depositAmount: next });
-      amountInput.disabled = false;
-      if (ok) {
-        b.depositAmount = next;
-      } else {
-        amountInput.value = prev !== null && prev !== undefined ? prev : '';
-      }
-    });
-    tr.querySelector('.amount-cell').appendChild(amountInput);
 
     const attBtn = document.createElement('button');
     attBtn.type = 'button';
