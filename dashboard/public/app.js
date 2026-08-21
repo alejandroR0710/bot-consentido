@@ -426,6 +426,7 @@ function renderDayDetail(iso) {
       <td class="link-cell">${chatLinkCell(b.chatId, b.chatLink)}</td>
       <td>${new Date(b.createdAt).toLocaleString('es-CO')}</td>
       <td class="payment-cell"></td>
+      <td class="amount-cell"></td>
       <td class="attendance-cell"></td>
     `;
 
@@ -453,11 +454,35 @@ function renderDayDetail(iso) {
     });
     tr.querySelector('.payment-cell').appendChild(select);
 
+    // Cuánto abonó (en pesos). Se guarda al salir del campo o con Enter,
+    // no en cada tecla, para no mandar una petición por cada dígito.
+    const amountInput = document.createElement('input');
+    amountInput.type = 'number';
+    amountInput.min = '0';
+    amountInput.step = '1000';
+    amountInput.placeholder = '0';
+    amountInput.className = 'amount-input';
+    if (b.depositAmount !== null && b.depositAmount !== undefined) amountInput.value = b.depositAmount;
+    amountInput.addEventListener('change', async () => {
+      const raw = amountInput.value.trim();
+      const prev = b.depositAmount;
+      const next = raw === '' ? null : Number(raw);
+      amountInput.disabled = true;
+      const ok = await saveBookingStatus(b.id, { depositAmount: next });
+      amountInput.disabled = false;
+      if (ok) {
+        b.depositAmount = next;
+      } else {
+        amountInput.value = prev !== null && prev !== undefined ? prev : '';
+      }
+    });
+    tr.querySelector('.amount-cell').appendChild(amountInput);
+
     const attBtn = document.createElement('button');
     attBtn.type = 'button';
     function paintAttendance() {
       attBtn.className = b.attendanceConfirmed ? 'btn btn-secondary attendance-btn is-confirmed' : 'btn btn-ghost attendance-btn';
-      attBtn.textContent = b.attendanceConfirmed ? '✅ Asistió' : 'Confirmar asistencia';
+      attBtn.textContent = b.attendanceConfirmed ? '✅ Asistirá' : 'Confirmar asistencia';
     }
     paintAttendance();
     attBtn.addEventListener('click', async () => {

@@ -308,3 +308,8 @@ main { max-width: 1000px; margin: 0 auto; padding: 1.5rem; display: flex; flex-d
 .payment-select.payment-completo { border-color: var(--ok); color: var(--ok); background: var(--ok-soft); }
 .attendance-btn { font-size: 0.8rem; padding: 0.4rem 0.7rem; white-space: nowrap; }
 .attendance-btn.is-confirmed { background: var(--ok-soft); color: var(--ok); }
+.amount-input {
+  width: 100px; padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--ink); font-size: 0.82rem;
+}
+.amount-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }

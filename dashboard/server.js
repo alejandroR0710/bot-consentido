@@ -455,14 +455,18 @@ app.get('/api/bookings', (req, res) => {
 
 const BOOKING_PAYMENT_STATUSES = ['pendiente', 'abono', 'completo'];
 
-// Marca a mano si el cliente abonó, pagó completo o confirmó asistencia.
-// Igual que /resume, no toca bot-state.json directamente: se lo pide al
-// proceso del bot por IPC para que sea el único que escribe ese archivo.
+// Marca a mano si el cliente abonó (y cuánto), pagó completo, o confirmó
+// que va a asistir. Igual que /resume, no toca bot-state.json directamente:
+// se lo pide al proceso del bot por IPC para que sea el único que escribe
+// ese archivo.
 app.post('/api/bookings/:id/status', (req, res) => {
   const { id } = req.params;
   const patch = {};
   if (req.body && BOOKING_PAYMENT_STATUSES.includes(req.body.payment)) patch.payment = req.body.payment;
   if (req.body && typeof req.body.attendanceConfirmed === 'boolean') patch.attendanceConfirmed = req.body.attendanceConfirmed;
+  if (req.body && (req.body.depositAmount === null || (typeof req.body.depositAmount === 'number' && req.body.depositAmount >= 0))) {
+    patch.depositAmount = req.body.depositAmount;
+  }
   if (!Object.keys(patch).length) return res.status(400).json({ error: 'Nada que actualizar.' });
   const sent = sendToBot({ type: 'updateBookingStatus', bookingId: id, patch });
   if (!sent) return res.status(409).json({ error: 'El bot no está corriendo; inícialo primero.' });

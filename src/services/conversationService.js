@@ -634,6 +634,7 @@ function addBooking({ chatId, product, workshopKey, schedule, date }) {
     date,
     createdAt: Date.now(),
     payment: 'pendiente',
+    depositAmount: null, // cuanto abono, en pesos; lo anota el asesor a mano
     attendanceConfirmed: false,
   };
   bookings.push(booking);
@@ -644,12 +645,21 @@ function getBookings() {
   return bookings.slice();
 }
 // Lo llama el panel (via IPC, ver whatsappAlternative.js) cuando el asesor
-// marca a mano que el cliente abono, pago completo o confirmo asistencia.
+// marca a mano que el cliente abono (y cuanto), pago completo, o confirmo
+// que va a asistir.
 function updateBookingStatus(bookingId, patch = {}) {
   const booking = bookings.find((b) => b.id === bookingId);
   if (!booking) return null;
   if (patch.payment !== undefined && PAYMENT_STATUSES.includes(patch.payment)) {
     booking.payment = patch.payment;
+  }
+  if (patch.depositAmount === null) {
+    booking.depositAmount = null; // se puede dejar vacio explicitamente
+  } else if (patch.depositAmount !== undefined) {
+    // Un monto invalido (negativo, no numerico) se ignora sin tocar el
+    // valor que ya habia, en vez de borrarlo.
+    const amount = Number(patch.depositAmount);
+    if (Number.isFinite(amount) && amount >= 0) booking.depositAmount = amount;
   }
   if (patch.attendanceConfirmed !== undefined) {
     booking.attendanceConfirmed = Boolean(patch.attendanceConfirmed);
