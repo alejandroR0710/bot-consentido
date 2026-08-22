@@ -98,6 +98,18 @@ function isComprobanteText(text) {
 function isHumanRequest(text) {
   return containsAny(text, ['asesor', 'hablar con alguien', 'humano']) || containsWord(text, ['persona']);
 }
+// Pregunta puntual sobre El Rinconcito del Migao (salon de onces dentro de
+// Con Sentido). Se responde de una vez, sin importar en que parte del
+// flujo este el cliente, y sin cambiar de estado (sigue donde iba).
+function isMigaoQuestion(text) {
+  return containsAny(text, ['migao', 'rinconcito']);
+}
+function migaoInfo() {
+  return [
+    '¡Claro que sí! 🥐 En *El Rinconcito del Migao* (nuestro salón de onces) puedes disfrutar y comprar migao y las demás opciones del menú.',
+    `🕘 Atendemos todos los días de ${KB.business.hours}, de domingo a domingo, incluyendo la venta en el salón de onces del Rinconcito del Migao.`,
+  ].join('\n');
+}
 
 function getSession(chatId) {
   const s = sessionStore.get(chatId);
@@ -1052,6 +1064,7 @@ function handleConversation(chatId, text, meta = {}) {
   if (state && state !== 'awaiting_name' && isCorrection(text)) return { reply: session?.data?.lastPrompt ? `¡Sin problema! 😊 ${session.data.lastPrompt}` : '¡Sin problema! Dime nuevamente que opcion deseas.' };
   if (state && state !== 'awaiting_name' && isGreeting(text)) return { reply: session?.data?.lastPrompt ? `¡Hola de nuevo! 😊 ${session.data.lastPrompt}` : '¡Hola de nuevo! 😊 Continuemos donde ibamos.' };
   if (isHumanRequest(text)) return escalate(chatId, 'Claro. 🌿 Voy a pasarte con alguien de nuestro equipo para continuar tu atencion.');
+  if (isMigaoQuestion(text)) return { reply: migaoInfo() };
   if (state === 'waiting_receipt' && (meta.hasMedia || isComprobanteText(text))) return receiptReceived(chatId);
   if (state && state !== 'waiting_receipt' && isPaymentIntent(text)) return startPayment(chatId);
 
