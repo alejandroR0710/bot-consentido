@@ -106,8 +106,8 @@ function isMigaoQuestion(text) {
 }
 function migaoInfo() {
   return [
-    '¡Claro que sí! 🥐 En *El Rinconcito del Migao* (nuestro salón de onces) puedes disfrutar y comprar migao y las demás opciones del menú.',
-    `🕘 Atendemos todos los días de ${KB.business.hours}, de domingo a domingo, incluyendo la venta en el salón de onces del Rinconcito del Migao.`,
+    `¡Claro que sí! 🕯️🥐 *${KB.business.name}* y *El Rinconcito del Migao* funcionan juntos en el mismo espacio: aquí encuentras nuestras velas artesanales y también puedes disfrutar o comprar migao y las demás opciones del menú del salón de onces.`,
+    `🕘 Atendemos todos los días de ${KB.business.hours}, de domingo a domingo, tanto en ${KB.business.name} como en El Rinconcito del Migao.`,
   ].join('\n');
 }
 
