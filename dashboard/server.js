@@ -15,7 +15,7 @@ const {
   DASHBOARD_PORT,
   DASHBOARD_SESSION_SECRET
 } = require('../src/config/env');
-const { formatDateEs, isPastIsoDate } = require('../src/utils/dateEs');
+const { formatDateEs, isPastIsoDate, toIsoDate } = require('../src/utils/dateEs');
 const { isFixedBlockDateBlocked } = require('../src/utils/schedulingRules');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -67,9 +67,56 @@ let lastDisconnectReason = null;
 const LOG_LIMIT = 2000;
 const logBuffer = [];
 
+// =============================================================================
+// LOG EN DISCO (data/logs/bot-YYYY-MM-DD.log) — el logBuffer de arriba es
+// solo en memoria y se pierde en cada reinicio del panel (y eso ya pasó
+// varias veces en la práctica); esto lo respalda en disco, un archivo por
+// día, para poder revisar despues. Se borran solos los que ya tengan mas
+// de LOG_RETENTION_DAYS, asi el espacio nunca crece sin control (con el
+// volumen de un solo negocio, un año completo de logs pesa unos pocos MB,
+// pero igual no tiene sentido guardarlos para siempre).
+const LOGS_DIR = path.join(ROOT_DIR, 'data', 'logs');
+const LOG_RETENTION_DAYS = 60;
+const LOG_FILENAME_RE = /^bot-(\d{4}-\d{2}-\d{2})\.log$/;
+
+function todayLogFilePath() {
+  return path.join(LOGS_DIR, `bot-${toIsoDate(new Date())}.log`);
+}
+
+function writeLogToDisk(text) {
+  try {
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const line = `[${new Date().toLocaleString('es-CO')}] ${text}\n`;
+    fs.appendFileSync(todayLogFilePath(), line, 'utf8');
+  } catch (error) {
+    // No es critico: si falla, el panel sigue funcionando igual con el
+    // log en memoria (logBuffer). Se avisa una sola vez por si acaso.
+    console.warn('⚠️ No se pudo escribir el log en disco:', error.message);
+  }
+}
+
+function cleanupOldLogFiles() {
+  try {
+    const files = fs.readdirSync(LOGS_DIR);
+    const cutoff = Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    files.forEach((file) => {
+      const match = file.match(LOG_FILENAME_RE);
+      if (!match) return;
+      const [y, m, d] = match[1].split('-').map(Number);
+      if (new Date(y, m - 1, d).getTime() < cutoff) {
+        fs.unlinkSync(path.join(LOGS_DIR, file));
+      }
+    });
+  } catch (error) {
+    // El directorio puede no existir todavia (primera vez); no es un error.
+  }
+}
+cleanupOldLogFiles();
+
 function appendLog(text) {
   logBuffer.push({ text, ts: Date.now() });
   if (logBuffer.length > LOG_LIMIT) logBuffer.shift();
+  writeLogToDisk(text);
 }
 
 function clearStaleLockfile() {
