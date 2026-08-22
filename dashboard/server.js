@@ -16,6 +16,7 @@ const {
   DASHBOARD_SESSION_SECRET
 } = require('../src/config/env');
 const { formatDateEs, isPastIsoDate } = require('../src/utils/dateEs');
+const { isFixedBlockDateBlocked } = require('../src/utils/schedulingRules');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const BOT_ENTRY = path.join(ROOT_DIR, 'src', 'index.js');
@@ -296,7 +297,12 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 function writeScheduleDates(workshopKey, dates) {
   if (!WORKSHOP_LABELS[workshopKey]) throw new Error(`Taller desconocido: ${workshopKey}`);
   const current = readScheduleDates();
-  const clean = [...new Set(dates.filter((d) => typeof d === 'string' && ISO_DATE_RE.test(d)))].sort();
+  // El Basico grupal es un bloque fijo de 9am a 3pm: los martes se
+  // descartan aca tambien (ademas de validarse en el panel), por si algo
+  // los manda directo a esta funcion sin pasar por esa validacion.
+  const clean = [...new Set(
+    dates.filter((d) => typeof d === 'string' && ISO_DATE_RE.test(d) && !isFixedBlockDateBlocked(d))
+  )].sort();
   current[workshopKey] = clean;
   fs.mkdirSync(path.dirname(SCHEDULE_DATES_FILE), { recursive: true });
   fs.writeFileSync(SCHEDULE_DATES_FILE, JSON.stringify(current, null, 2), 'utf8');

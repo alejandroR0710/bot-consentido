@@ -39,12 +39,14 @@ test('flujo 2: experiencia informa primero y pregunta ocasion', () => {
   assert.match(r.reply, /ocasion/i);
 });
 
-test('flujo 2: cumpleaños ofrece decoracion y torta despues de personas y fecha', () => {
+test('flujo 2: cumpleaños ofrece decoracion y torta despues de personas, fecha y jornada', () => {
   const c = chat('birthday'); start(c);
   handleConversation(c, '2');
   handleConversation(c, 'cumpleaños de mi mama');
   handleConversation(c, '4 personas');
-  const r = handleConversation(c, '26 de septiembre');
+  const askJornada = handleConversation(c, '26 de septiembre');
+  assert.match(askJornada.reply, /jornada/i);
+  const r = handleConversation(c, '1'); // jornada: manana
   assert.match(r.reply, /Decoracion/i);
   assert.match(r.reply, /Torta/i);
 });

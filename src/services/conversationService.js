@@ -9,6 +9,7 @@ const path = require('path');
 const { loadState, saveState } = require('./persistentStore');
 const KB = require('../config/knowledgeBase');
 const { isWeekday, toIsoDate, formatDateEs } = require('../utils/dateEs');
+const { isWorkshopSlotAllowed, isExperienceTextSlotBlocked } = require('../utils/schedulingRules');
 
 const SESSION_TTL = 20 * 60 * 1000;
 const CONTACT_PROFILE_TTL = 30 * 24 * 60 * 60 * 1000;
@@ -390,6 +391,26 @@ function startExperience(chatId) {
   };
 }
 function isBirthday(text) { return containsAny(text, ['cumple', 'cumpleanos', 'cumpleaños']); }
+// Si el cliente aun no tiene fecha en mente, no tiene sentido preguntarle
+// la jornada (no hay contra que validarla), asi que se salta ese paso.
+function isNoDateYet(text) {
+  return containsAny(text, ['aun no', 'no se', 'no sé', 'sin fecha', 'no tengo fecha', 'por definir']);
+}
+// Compartido entre "acaba de decir que aun no tiene fecha" y "ya eligio
+// fecha + jornada": ambos caminos llegan aqui si es cumpleaños.
+function experienceBirthdayExtrasPrompt(chatId, extraData) {
+  setSession(chatId, 'experience_birthday_extras', extraData);
+  return {
+    reply: [
+      'Para cumpleaños tambien podemos preparar adicionales 🎂:',
+      `1. 🎈 Decoracion especial: +${money(KB.experience.birthdayExtras.decoration)}`,
+      `2. 🍰 Porcion de torta con velita: +${money(KB.experience.birthdayExtras.cakePerPerson)} por persona`,
+      '3. Ambos',
+      '4. Ninguno',
+      '¿Te gustaria agregar alguno?',
+    ].join('\n'),
+  };
+}
 function experienceSummary(chatId) {
   const s = getSession(chatId);
   const d = s?.data || {};
@@ -407,6 +428,7 @@ function experienceSummary(chatId) {
       `👥 ${people} persona${people === 1 ? '' : 's'}`,
       `🎉 Ocasion: ${d.occasion || 'Por definir'}`,
       `📅 Fecha: ${d.date || 'Por definir'}`,
+      d.schedule ? `🕘 Jornada: ${d.schedule}` : null,
       d.decoration ? `🎈 Decoracion: +${money(KB.experience.birthdayExtras.decoration)}` : null,
       d.cake ? `🍰 Torta: +${money(KB.experience.birthdayExtras.cakePerPerson)} por persona` : null,
       `💰 Total estimado: ${money(total)}`,
@@ -617,7 +639,7 @@ function nextAvailableDates(schedule, howMany = BOOKING_OPTIONS_TO_OFFER, exclud
   cursor.setDate(cursor.getDate() + 1);
   for (let i = 0; i < BOOKING_LOOKAHEAD_DAYS && results.length < howMany; i++) {
     const iso = toIsoDate(cursor);
-    if (isWeekday(iso) && !excludeDates.includes(iso) && isSlotAvailable(iso, schedule)) {
+    if (isWeekday(iso) && isWorkshopSlotAllowed(iso, schedule) && !excludeDates.includes(iso) && isSlotAvailable(iso, schedule)) {
       results.push(iso);
     }
     cursor.setDate(cursor.getDate() + 1);
@@ -832,20 +854,31 @@ function handleState(chatId, text, meta = {}) {
   }
   if (state === 'experience_date') {
     const date = String(text).trim();
-    if (d.birthday) {
-      setSession(chatId, 'experience_birthday_extras', { date });
-      return {
-        reply: [
-          'Para cumpleaños tambien podemos preparar adicionales 🎂:',
-          `1. 🎈 Decoracion especial: +${money(KB.experience.birthdayExtras.decoration)}`,
-          `2. 🍰 Porcion de torta con velita: +${money(KB.experience.birthdayExtras.cakePerPerson)} por persona`,
-          '3. Ambos',
-          '4. Ninguno',
-          '¿Te gustaria agregar alguno?',
-        ].join('\n'),
-      };
+    // Si aun no tiene fecha, no hay contra que validar jornada: se salta
+    // directo a lo que seguia antes de agregar esta pregunta.
+    if (isNoDateYet(date)) {
+      if (d.birthday) return experienceBirthdayExtrasPrompt(chatId, { date });
+      setSession(chatId, 'experience_summary', { date });
+      return experienceSummary(chatId);
     }
-    setSession(chatId, 'experience_summary', { date });
+    setSession(chatId, 'experience_schedule', { date });
+    return {
+      reply: [
+        `Perfecto, anote *${date}*.`,
+        '¿Que jornada prefieres para ese dia?',
+        '1. ☀️ Mañana (9am a 1pm aprox.)',
+        '2. 🌙 Tarde (3pm a 7pm aprox.)',
+      ].join('\n'),
+    };
+  }
+  if (state === 'experience_schedule') {
+    const schedule = parseSchedule(text);
+    if (!schedule) return retry(chatId, '¿Que jornada prefieres? 1. Mañana  2. Tarde');
+    if (isExperienceTextSlotBlocked(d.date, schedule)) {
+      return retry(chatId, 'Para ese dia y jornada no tenemos disponibilidad 🙏 (no agendamos martes en la tarde, ni sabados antes de las 3pm). ¿Prefieres otro dia o la otra jornada?');
+    }
+    if (d.birthday) return experienceBirthdayExtrasPrompt(chatId, { schedule });
+    setSession(chatId, 'experience_summary', { schedule });
     return experienceSummary(chatId);
   }
   if (state === 'experience_birthday_extras') {

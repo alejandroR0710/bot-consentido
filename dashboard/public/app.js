@@ -228,11 +228,13 @@ async function loadScheduleDates() {
         <input type="date" min="${todayIso}" />
         <button class="btn btn-secondary" type="button">Agregar</button>
       </div>
+      <p class="error-text workshop-date-error" hidden></p>
     `;
     const chipList = block.querySelector('.date-chip-list');
     const input = block.querySelector('input');
     const addBtn = block.querySelector('button');
     const savedLabel = block.querySelector('.workshop-saved');
+    const dateError = block.querySelector('.workshop-date-error');
 
     function renderChips() {
       chipList.innerHTML = '';
@@ -273,6 +275,18 @@ async function loadScheduleDates() {
 
     addBtn.addEventListener('click', () => {
       if (!input.value) return;
+      dateError.hidden = true;
+      // El Basico grupal es un bloque fijo de 9am a 3pm, y ese horario
+      // siempre choca con la restriccion de "no agendar martes en la
+      // tarde" (regla del negocio), asi que los martes no se pueden
+      // cargar aqui.
+      const [y, m, dayNum] = input.value.split('-').map(Number);
+      const weekday = new Date(y, m - 1, dayNum).getDay();
+      if (weekday === 2) {
+        dateError.textContent = 'Los martes no se pueden agendar (el horario fijo de este taller choca con la tarde).';
+        dateError.hidden = false;
+        return;
+      }
       if (dates.some((d) => d.iso === input.value)) { input.value = ''; return; }
       dates.push({ iso: input.value, label: formatDateEs(input.value), expired: false });
       dates.sort((a, b) => a.iso.localeCompare(b.iso));
