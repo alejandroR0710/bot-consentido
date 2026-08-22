@@ -78,7 +78,16 @@ function containsWord(text, words) {
   return words.some((w) => new RegExp(`\\b${normalizeText(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(n));
 }
 function isGreeting(text) {
-  return containsAny(text, ['hola', 'buenas', 'buenos dias', 'buenas tardes', 'buenas noches', 'hey']);
+  return (
+    containsAny(text, [
+      'hola', 'holi', 'buenas', 'buenos dias', 'buenas tardes', 'buenas noches',
+      'buen dia', 'saludos', 'quiubo', 'qiubo', 'que mas',
+    ]) ||
+    // "hi"/"hey"/"ola" son cortas y aparecen como subcadena de un monton de
+    // palabras en español (ej. "hi" dentro de "hice", "dirigir"), por eso
+    // van con limite de palabra completa en vez de containsAny.
+    containsWord(text, ['hey', 'hi', 'hello', 'ola'])
+  );
 }
 function isMenuRequest(text) {
   return containsAny(text, ['menu', 'menu principal', 'volver al menu', 'inicio']);
@@ -102,7 +111,10 @@ function isHumanRequest(text) {
 // Con Sentido). Se responde de una vez, sin importar en que parte del
 // flujo este el cliente, y sin cambiar de estado (sigue donde iba).
 function isMigaoQuestion(text) {
-  return containsAny(text, ['migao', 'rinconcito']);
+  // 'migao' ya cubre 'migaos' (plural correcto) por ser subcadena; se
+  // agrega 'migados' aparte porque es una variante/error comun que no
+  // comparte esa raiz.
+  return containsAny(text, ['migao', 'migados', 'rinconcito']);
 }
 function migaoInfo() {
   return [
@@ -1072,6 +1084,12 @@ function handleConversation(chatId, text, meta = {}) {
     if (isGreeting(text)) { setSession(chatId, 'awaiting_name'); return { reply: getWelcomeMessage() }; }
     const interest = detectInterest(text);
     if (interest) { setSession(chatId, 'awaiting_interest'); return handleState(chatId, text, meta); }
+    // A proposito NO se responde nada mas aqui (ni siquiera en el primer
+    // mensaje de un chat nuevo): este numero tambien recibe conversaciones
+    // personales, y una respuesta generica sin reconocer nada especifico
+    // del negocio ya habia causado que el bot le hablara de mas a un
+    // contacto personal. Ver isGreeting/detectInterest arriba para lo que
+    // si dispara respuesta.
     return { reply: null };
   }
 
