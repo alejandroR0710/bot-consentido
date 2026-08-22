@@ -231,10 +231,11 @@ function getImagePath(fileName) {
 function getWelcomeMessage() {
   return '¡Hola! 🌿 Bienvenido(a) a Con Sentido. Soy Abby, tu asesora virtual, y estoy feliz de ayudarte hoy. Antes de continuar, ¿me regalas tu nombre?';
 }
-function mainMenu(chatId) {
+function mainMenu(chatId, opts = {}) {
   const name = firstName(chatId);
+  const greeting = opts.greeting || (name ? `¡Un gusto, ${name}!` : '¡Qué gusto tenerte por aqui!');
   return [
-    `${name ? `¡Un gusto, ${name}!` : '¡Qué gusto tenerte por aqui!'} 🌿 Cuéntame, ¿qué te gustaría conocer hoy?`,
+    `${greeting} 🌿 Cuéntame, ¿qué te gustaría conocer hoy?`,
     '1. Talleres para aprender a hacer velas',
     '2. Experiencia Con Sentido',
     '3. Insumos para fabricar velas',
@@ -244,9 +245,9 @@ function mainMenu(chatId) {
     'Puedes responderme con el numero o simplemente contarme con tus palabras 😊.',
   ].join('\n');
 }
-function goMain(chatId) {
+function goMain(chatId, opts) {
   setSession(chatId, 'awaiting_interest');
-  return { reply: mainMenu(chatId) };
+  return { reply: mainMenu(chatId, opts) };
 }
 
 function detectInterest(text) {
@@ -1081,7 +1082,16 @@ function handleConversation(chatId, text, meta = {}) {
   if (state && state !== 'waiting_receipt' && isPaymentIntent(text)) return startPayment(chatId);
 
   if (!state) {
-    if (isGreeting(text)) { setSession(chatId, 'awaiting_name'); return { reply: getWelcomeMessage() }; }
+    if (isGreeting(text)) {
+      // Si ya hubo una conversacion previa con este chat (le sabemos el
+      // nombre), no se le vuelve a pedir el nombre como si fuera la
+      // primera vez: se le saluda de nuevo y se pregunta directo en que
+      // mas se le puede ayudar.
+      const profile = getContactProfile(chatId);
+      if (profile?.nombre) return goMain(chatId, { greeting: `¡Hola de nuevo, ${firstName(chatId)}!` });
+      setSession(chatId, 'awaiting_name');
+      return { reply: getWelcomeMessage() };
+    }
     const interest = detectInterest(text);
     if (interest) { setSession(chatId, 'awaiting_interest'); return handleState(chatId, text, meta); }
     // A proposito NO se responde nada mas aqui (ni siquiera en el primer
