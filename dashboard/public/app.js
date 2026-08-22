@@ -186,10 +186,63 @@ async function refreshEscalations() {
       <td class="link-cell">${chatLinkCell(e.chatId, e.chatLink)}</td>
       <td>${e.productoInteres || '—'}</td>
       <td>${e.motivo || '—'}</td>
+      <td></td>
     `;
+    const convCell = tr.lastElementChild;
+    if (e.chatId) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'link-btn';
+      btn.textContent = 'Ver conversación';
+      btn.addEventListener('click', () => openConversationModal(e.chatId, e.nombre));
+      convCell.appendChild(btn);
+    } else {
+      convCell.textContent = '—';
+    }
     tbody.appendChild(tr);
   });
 }
+
+// ---------- modal de conversación ----------
+function renderConversationMessages(messages) {
+  const container = $('#conversationMessages');
+  container.innerHTML = '';
+  $('#conversationEmpty').hidden = messages.length > 0;
+  messages.forEach((m) => {
+    const row = document.createElement('div');
+    row.className = `chat-bubble-row from-${m.from}`;
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble';
+    bubble.textContent = m.text;
+    const time = document.createElement('span');
+    time.className = 'chat-bubble-time';
+    time.textContent = new Date(m.timestamp).toLocaleString('es-CO');
+    bubble.appendChild(time);
+    row.appendChild(bubble);
+    container.appendChild(row);
+  });
+  if (messages.length) container.scrollTop = container.scrollHeight;
+}
+
+async function openConversationModal(chatId, nombre) {
+  const modal = $('#conversationModal');
+  $('#conversationModalTitle').textContent = `Conversación${nombre ? ` — ${nombre}` : ''}`;
+  renderConversationMessages([]);
+  modal.hidden = false;
+  const res = await fetch(`/api/conversations/${encodeURIComponent(chatId)}`);
+  if (res.status === 401) { window.location.href = '/login.html'; return; }
+  const { messages } = await res.json();
+  renderConversationMessages(messages || []);
+}
+
+function closeConversationModal() { $('#conversationModal').hidden = true; }
+$('#conversationModalClose').addEventListener('click', closeConversationModal);
+$('#conversationModal').addEventListener('click', (e) => {
+  if (e.target.id === 'conversationModal') closeConversationModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#conversationModal').hidden) closeConversationModal();
+});
 
 // ---------- fechas de agendamiento ----------
 const WEEKDAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];

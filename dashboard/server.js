@@ -438,6 +438,24 @@ app.get('/api/escalations', (req, res) => {
   res.json({ escalations: list });
 });
 
+// Historial de mensajes cliente/bot de un chat (lo guarda
+// conversationService.js). Solo cubre lo que el bot conversó automático;
+// los mensajes manuales que se escriben al pausar el bot no quedan acá
+// (esos se ven directo en WhatsApp).
+app.get('/api/conversations/:chatId', (req, res) => {
+  const { chatId } = req.params;
+  const state = readBotState();
+  const links = readContactLinks();
+  const contactProfiles = state.contactProfiles || {};
+  const messages = (state.conversationLogs || {})[chatId] || [];
+  res.json({
+    chatId,
+    chatLink: buildChatLink(chatId, links),
+    nombre: contactProfiles[chatId]?.nombre || null,
+    messages
+  });
+});
+
 // Agenda de Avanzado/Personalizado (cupo compartido, calculado y guardado
 // por conversationService.js en cada reserva confirmada). Solo lectura,
 // igual que el resto de datos de bot-state.json.

@@ -86,7 +86,7 @@
       <div class="card">
         <h2>Historial de escalamientos</h2>
         <table class="data-table" id="escalationsTable">
-          <thead><tr><th>Fecha</th><th>Cliente</th><th>Chat</th><th>Interés</th><th>Motivo</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Chat</th><th>Interés</th><th>Motivo</th><th>Conversación</th></tr></thead>
           <tbody></tbody>
         </table>
         <p class="empty-state" id="escalationsEmpty" hidden>Todavía no hay escalamientos registrados.</p>
@@ -162,6 +162,17 @@
       </div>
     </section>
   </main>
+
+  <div id="conversationModal" class="modal-overlay" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="conversationModalTitle">Conversación</h2>
+        <button id="conversationModalClose" class="btn btn-ghost" type="button" aria-label="Cerrar">✕</button>
+      </div>
+      <div id="conversationMessages" class="conversation-messages"></div>
+      <p class="empty-state" id="conversationEmpty" hidden>No hay mensajes registrados para este chat.</p>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

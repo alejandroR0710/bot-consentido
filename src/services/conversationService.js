@@ -33,6 +33,12 @@ const paymentReminderTimers = new Map();
 const followUpArmedAt = new Map();
 const paymentReminderArmedAt = new Map();
 const lastAdvisorNotificationAt = new Map();
+// Historial simple de mensajes cliente/bot por chat, para poder leer la
+// conversacion desde el panel (sobre todo en Escalamientos). No incluye
+// los mensajes manuales que tu escribes cuando pausas el bot: esos ya se
+// ven directo en WhatsApp.
+const CONVERSATION_LOG_LIMIT = 200; // mensajes por chat
+const conversationLogs = new Map();
 
 function normalizeText(text) {
   return String(text || '')
@@ -150,6 +156,17 @@ function getContactProfile(chatId) {
     return null;
   }
   return p;
+}
+function logMessage(chatId, from, text) {
+  const clean = String(text || '').trim();
+  if (!clean) return;
+  const log = conversationLogs.get(chatId) || [];
+  log.push({ from, text: clean, timestamp: Date.now() });
+  if (log.length > CONVERSATION_LOG_LIMIT) log.splice(0, log.length - CONVERSATION_LOG_LIMIT);
+  conversationLogs.set(chatId, log);
+}
+function getConversationLog(chatId) {
+  return (conversationLogs.get(chatId) || []).slice();
 }
 function ensureProfile(chatId) {
   let p = getContactProfile(chatId);
@@ -1067,7 +1084,7 @@ function retry(chatId, prompt) {
   return { reply: prompt };
 }
 
-function handleConversation(chatId, text, meta = {}) {
+function handleConversationInner(chatId, text, meta = {}) {
   clearFollowUps(chatId);
   const session = getSession(chatId);
   const state = session?.state;
@@ -1107,6 +1124,22 @@ function handleConversation(chatId, text, meta = {}) {
   if (result.reply && !result.final) {
     const updated = getSession(chatId);
     if (updated) setSession(chatId, updated.state, { lastPrompt: result.reply });
+  }
+  return result;
+}
+
+// Envoltorio de handleConversationInner que ademas guarda el mensaje del
+// cliente y la respuesta del bot en el historial de conversacion (para
+// leerlo despues en el panel). Se hace aca en un solo lugar en vez de en
+// cada "return" de la funcion de arriba, que tiene varios.
+function handleConversation(chatId, text, meta = {}) {
+  logMessage(chatId, 'cliente', meta.hasMedia && !String(text || '').trim() ? '📎 (imagen o archivo adjunto)' : text);
+  const result = handleConversationInner(chatId, text, meta);
+  if (result) {
+    let botText = result.reply;
+    if (!botText && result.imagePath) botText = '📎 (imagen enviada)';
+    else if (!botText && result.pdfPath) botText = '📎 (PDF enviado)';
+    if (botText) logMessage(chatId, 'bot', botText);
   }
   return result;
 }
@@ -1183,6 +1216,7 @@ function serializeState() {
     // El panel lee esto para saber cuantos cupos por dia+jornada mostrar,
     // sin tener que duplicar el numero a mano en dos archivos.
     bookingSlotCapacity: BOOKING_SLOT_CAPACITY,
+    conversationLogs: Object.fromEntries(conversationLogs),
   };
 }
 function hydrateState() {
@@ -1200,6 +1234,7 @@ function hydrateState() {
   Object.entries(state.paymentReminderArmedAt || {}).forEach(([k, v]) => paymentReminderArmedAt.set(k, v));
   if (Array.isArray(state.escalationHistory)) escalationHistory.push(...state.escalationHistory);
   if (Array.isArray(state.bookings)) bookings.push(...state.bookings);
+  Object.entries(state.conversationLogs || {}).forEach(([k, v]) => { if (Array.isArray(v)) conversationLogs.set(k, v); });
 }
 hydrateState();
 function persistNow() { saveState(serializeState()); }
@@ -1221,4 +1256,5 @@ module.exports = {
   rearmPendingReminders,
   getBookings,
   updateBookingStatus,
+  getConversationLog,
 };

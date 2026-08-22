@@ -313,3 +313,34 @@ main { max-width: 1000px; margin: 0 auto; padding: 1.5rem; display: flex; flex-d
   background: var(--bg); color: var(--ink); font-size: 0.82rem;
 }
 .amount-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+
+/* ---------- modal de conversación (Escalamientos) ---------- */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 50;
+  display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+}
+.modal-overlay[hidden] { display: none; }
+.modal-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  width: min(560px, 100%); max-height: min(680px, 90vh); display: flex; flex-direction: column;
+  box-shadow: 0 20px 45px -20px rgba(0, 0, 0, 0.45);
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
+}
+.modal-header h2 { margin: 0; font-size: 1rem; }
+.conversation-messages { overflow-y: auto; padding: 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.chat-bubble-row { display: flex; }
+.chat-bubble-row.from-bot { justify-content: flex-start; }
+.chat-bubble-row.from-cliente { justify-content: flex-end; }
+.chat-bubble {
+  max-width: 80%; padding: 0.55rem 0.8rem; border-radius: 12px; font-size: 0.88rem; line-height: 1.4;
+  white-space: pre-wrap; word-break: break-word;
+}
+.chat-bubble-row.from-bot .chat-bubble { background: var(--accent-soft); color: var(--ink); border-bottom-left-radius: 3px; }
+.chat-bubble-row.from-cliente .chat-bubble { background: var(--ok-soft); color: var(--ink); border-bottom-right-radius: 3px; }
+.chat-bubble-time { display: block; margin-top: 0.25rem; font-size: 0.68rem; color: var(--ink-soft); }
+.link-btn {
+  background: none; border: none; color: var(--accent); font-size: 0.85rem; cursor: pointer; padding: 0; text-decoration: underline;
+}
