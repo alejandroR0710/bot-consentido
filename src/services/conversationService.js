@@ -1238,7 +1238,26 @@ function hydrateState() {
 }
 hydrateState();
 function persistNow() { saveState(serializeState()); }
-const persistTimer = setInterval(persistNow, 30000);
+// isBotPaused() limpia una pausa vencida de forma "perezosa" (solo cuando
+// el cliente vuelve a escribir ahi). Si nunca vuelve a escribir, se queda
+// vencida para siempre en pausedChats y el panel la sigue mostrando en
+// "Chats pausados" con "ya mismo" sin que desaparezca nunca. Este barrido
+// periodico la limpia igual, aunque nadie vuelva a escribir.
+function sweepExpiredPauses() {
+  const now = Date.now();
+  let changed = false;
+  for (const [chatId, pausedAt] of pausedChats.entries()) {
+    if (now - pausedAt > PAUSE_TTL_MS) {
+      pausedChats.delete(chatId);
+      changed = true;
+    }
+  }
+  return changed;
+}
+const persistTimer = setInterval(() => {
+  sweepExpiredPauses();
+  persistNow();
+}, 30000);
 if (persistTimer.unref) persistTimer.unref();
 
 module.exports = {
