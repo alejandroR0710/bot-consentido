@@ -118,7 +118,20 @@ async function refreshPaused() {
       <td>${new Date(c.pausedAt).toLocaleString('es-CO')}</td>
       <td>${formatDuration(c.msRemaining)}</td>
       <td></td>
+      <td></td>
     `;
+    const convCell = tr.children[4];
+    if (c.chatId) {
+      const convBtn = document.createElement('button');
+      convBtn.type = 'button';
+      convBtn.className = 'link-btn';
+      convBtn.textContent = 'Ver conversación';
+      convBtn.addEventListener('click', () => openConversationModal(c.chatId, c.nombre));
+      convCell.appendChild(convBtn);
+    } else {
+      convCell.textContent = '—';
+    }
+
     const actionCell = tr.lastElementChild;
     const btn = document.createElement('button');
     btn.className = 'btn btn-secondary';
@@ -165,7 +178,19 @@ async function refreshContacts() {
       <td>${c.status || '—'}</td>
       <td>${c.ciudad || '—'}</td>
       <td>${(c.tags || []).join(', ') || '—'}</td>
+      <td></td>
     `;
+    const convCell = tr.lastElementChild;
+    if (c.chatId) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'link-btn';
+      btn.textContent = 'Ver conversación';
+      btn.addEventListener('click', () => openConversationModal(c.chatId, c.nombre));
+      convCell.appendChild(btn);
+    } else {
+      convCell.textContent = '—';
+    }
     tbody.appendChild(tr);
   });
 }
