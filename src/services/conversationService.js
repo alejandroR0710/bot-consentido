@@ -231,10 +231,17 @@ function getPdfIfNotSentBefore(chatId, category) {
 
 // Busca la imagen en public/images/. Contempla el archivo tal cual y la
 // variante con extension duplicada (ej. "group_class.jpeg.jpeg"), que es
-// como quedaron guardadas las imagenes actuales del proyecto.
+// como quedaron guardadas las imagenes actuales del proyecto. Tambien
+// contempla que la segunda extension no sea igual a la primera (ej.
+// "experience.jpg.jpeg"), que fue como quedo guardada esa en particular.
 function getImagePath(fileName) {
   const parsed = path.parse(fileName);
-  const candidates = [fileName, `${parsed.name}${parsed.ext}${parsed.ext}`];
+  const candidates = [
+    fileName,
+    `${parsed.name}${parsed.ext}${parsed.ext}`,
+    `${parsed.name}${parsed.ext}.jpeg`,
+    `${parsed.name}${parsed.ext}.jpg`,
+  ];
   for (const base of PUBLIC_DIRS) {
     const dir = path.join(base, 'images');
     for (const candidate of candidates) {
@@ -429,7 +436,7 @@ function startExperience(chatId) {
       '',
       'Para personalizarla, cuéntame: ¿que ocasion quieren compartir o celebrar?',
     ].join('\n'),
-    imagePath: getImagePath('experiencia.jpeg'),
+    imagePath: getImagePath('experience.jpg'),
   };
 }
 function isBirthday(text) { return containsAny(text, ['cumple', 'cumpleanos', 'cumpleaños']); }
