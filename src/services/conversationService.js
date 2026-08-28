@@ -986,7 +986,7 @@ function handleState(chatId, text, meta = {}) {
     }
     if (n === 2 || containsAny(text, ['mensajero', 'picap', 'rappi', 'indrive', 'uber'])) {
       setSession(chatId, 'courier_name', { delivery: 'Mensajero solicitado por el cliente', fullPayment: true });
-      return { reply: ['Perfecto. Para evitar inconvenientes, *Con Sentido no solicita el domicilio*. Debes pedir el mensajero desde tu propia aplicacion.', 'Cuando lo tengas asignado, envíame el *nombre del conductor*.'].join('\n') };
+      return { reply: ['Perfecto. Para evitar inconvenientes, *Con Sentido no solicita el domicilio*.', 'Espera a que te avisemos que tu pedido está listo: en ese momento pides el mensajero desde tu propia aplicación (no antes).', 'Cuando lo tengas asignado, envíame el *nombre del conductor*.'].join('\n') };
     }
     if (n === 3 || containsAny(text, ['envio nacional', 'otra ciudad', 'transportadora'])) {
       setSession(chatId, 'national_shipping_data', { delivery: 'Envio nacional', packaging: KB.supplies.packagingNational, fullPayment: true });
