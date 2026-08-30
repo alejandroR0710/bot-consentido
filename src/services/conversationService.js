@@ -1104,9 +1104,48 @@ function handleConversationInner(chatId, text, meta = {}) {
   if (isMigaoQuestion(text)) return { reply: migaoInfo() };
   if (state === 'waiting_receipt' && (meta.hasMedia || isComprobanteText(text))) return receiptReceived(chatId);
   if (state && state !== 'waiting_receipt' && isPaymentIntent(text)) return startPayment(chatId);
+  // Quedo pendiente pedir el nombre (saludo + necesidad en el mismo
+  // mensaje inicial, ver mas abajo): esta es su siguiente respuesta, asi
+  // que se toma como su nombre y se retoma la pregunta que se le habia
+  // hecho (lastPrompt), en vez de interpretar este mensaje como la
+  // respuesta a esa pregunta.
+  if (state && session?.data?.needsName && !getContactProfile(chatId)?.nombre) {
+    const name = String(text || '').trim();
+    if (name) {
+      updateProfile(chatId, { nombre: name });
+      setSession(chatId, state, { needsName: false });
+      const firstNameOnly = name.split(/\s+/)[0];
+      return { reply: session.data.lastPrompt ? `¡Un gusto, ${firstNameOnly}! 😊 ${session.data.lastPrompt}` : `¡Un gusto, ${firstNameOnly}! 😊` };
+    }
+  }
 
   if (!state) {
-    if (isGreeting(text)) {
+    const greeting = isGreeting(text);
+    const shortcut = detectWorkshopShortcut(text);
+    const interest = detectInterest(text);
+    // Si el primer mensaje trae un saludo Y de una vez lo que necesita
+    // ("Hola, quiero información de talleres"), no tiene sentido hacerlo
+    // esperar a dar su nombre antes de contarle lo que pidio: se le
+    // saluda y se le manda la info de una vez. El nombre se pide despues,
+    // en su siguiente respuesta (needsName abajo), para no retrasar la
+    // info pero igual poder personalizar la atencion.
+    if (greeting && (shortcut || interest)) {
+      const profile = getContactProfile(chatId);
+      setSession(chatId, 'awaiting_interest', profile?.nombre ? {} : { needsName: true });
+      const result = handleState(chatId, text, meta) || { reply: null };
+      const greetLine = profile?.nombre ? `¡Hola de nuevo, ${firstName(chatId)}! 🌿` : '¡Hola! 🌿';
+      const combined = result.reply ? { ...result, reply: `${greetLine}\n${result.reply}` } : result;
+      // Igual que hace el cierre normal de handleConversationInner (mas
+      // abajo): se guarda como lastPrompt para poder retomarlo si toca
+      // pedir el nombre en la siguiente respuesta, o si el cliente saluda/
+      // se corrige a mitad de flujo.
+      if (combined.reply && !combined.final) {
+        const updated = getSession(chatId);
+        if (updated) setSession(chatId, updated.state, { lastPrompt: combined.reply });
+      }
+      return combined;
+    }
+    if (greeting) {
       // Si ya hubo una conversacion previa con este chat (le sabemos el
       // nombre), no se le vuelve a pedir el nombre como si fuera la
       // primera vez: se le saluda de nuevo y se pregunta directo en que
@@ -1116,7 +1155,6 @@ function handleConversationInner(chatId, text, meta = {}) {
       setSession(chatId, 'awaiting_name');
       return { reply: getWelcomeMessage() };
     }
-    const interest = detectInterest(text);
     if (interest) { setSession(chatId, 'awaiting_interest'); return handleState(chatId, text, meta); }
     // A proposito NO se responde nada mas aqui (ni siquiera en el primer
     // mensaje de un chat nuevo): este numero tambien recibe conversaciones
