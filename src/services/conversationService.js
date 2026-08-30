@@ -129,7 +129,13 @@ function isComprobanteText(text) {
   return containsAny(text, ['comprobante', 'soporte de pago', 'ya pague', 'ya envie el pago', 'adjunto pago']);
 }
 function isHumanRequest(text) {
-  return containsAny(text, ['asesor', 'hablar con alguien', 'humano']) || containsWord(text, ['persona']);
+  return (
+    containsAny(text, [
+      'asesor', 'ascesor', 'asezor', // "asesor" y errores comunes de escritura
+      'hablar con alguien', 'comunicarme con alguien',
+      'humano', 'ayuda', 'ayude', // "ayuda"/"ayudame" y "ayudeme"/"ayudenme"
+    ]) || containsWord(text, ['persona'])
+  );
 }
 // Pregunta puntual sobre El Rinconcito del Migao (salon de onces dentro de
 // Con Sentido). Se responde de una vez, sin importar en que parte del
