@@ -1105,17 +1105,28 @@ function handleConversationInner(chatId, text, meta = {}) {
   if (state === 'waiting_receipt' && (meta.hasMedia || isComprobanteText(text))) return receiptReceived(chatId);
   if (state && state !== 'waiting_receipt' && isPaymentIntent(text)) return startPayment(chatId);
   // Quedo pendiente pedir el nombre (saludo + necesidad en el mismo
-  // mensaje inicial, ver mas abajo): esta es su siguiente respuesta, asi
-  // que se toma como su nombre y se retoma la pregunta que se le habia
-  // hecho (lastPrompt), en vez de interpretar este mensaje como la
-  // respuesta a esa pregunta.
+  // mensaje inicial, ver mas abajo). Si esta respuesta es una sola
+  // palabra (y no un numero), se toma como su nombre y se retoma la
+  // pregunta que se le habia hecho (lastPrompt). Pero si trae varias
+  // palabras, o es un numero, seguramente esta respondiendo esa pregunta
+  // en vez de dar su nombre: se revisa como respuesta normal (abajo) y se
+  // insiste una sola vez con el nombre despues de esa respuesta; si en
+  // esa segunda oportunidad tampoco da un nombre claro, se deja de
+  // insistir para no fastidiar.
+  let insistOnNameAfter = false;
   if (state && session?.data?.needsName && !getContactProfile(chatId)?.nombre) {
-    const name = String(text || '').trim();
-    if (name) {
-      updateProfile(chatId, { nombre: name });
+    const trimmed = String(text || '').trim();
+    const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
+    const looksLikeName = wordCount === 1 && !/^\d+$/.test(trimmed);
+    if (looksLikeName) {
+      updateProfile(chatId, { nombre: trimmed });
+      setSession(chatId, state, { needsName: false, nameInsisted: false });
+      return { reply: session.data.lastPrompt ? `¡Un gusto, ${trimmed}! 😊 ${session.data.lastPrompt}` : `¡Un gusto, ${trimmed}! 😊` };
+    }
+    if (session.data.nameInsisted) {
       setSession(chatId, state, { needsName: false });
-      const firstNameOnly = name.split(/\s+/)[0];
-      return { reply: session.data.lastPrompt ? `¡Un gusto, ${firstNameOnly}! 😊 ${session.data.lastPrompt}` : `¡Un gusto, ${firstNameOnly}! 😊` };
+    } else {
+      insistOnNameAfter = true;
     }
   }
 
@@ -1167,8 +1178,15 @@ function handleConversationInner(chatId, text, meta = {}) {
 
   const result = handleState(chatId, text, meta) || { reply: null };
   if (result.reply && !result.final) {
+    // lastPrompt se guarda SIN la insistencia del nombre a proposito: si
+    // mas adelante se retoma este mismo prompt (al capturar el nombre, al
+    // saludar o corregirse a mitad de flujo), no tiene sentido repetir
+    // "¿me regalas tu nombre?" cuando eso ya se resolvio o ya no aplica.
     const updated = getSession(chatId);
-    if (updated) setSession(chatId, updated.state, { lastPrompt: result.reply });
+    if (updated) setSession(chatId, updated.state, { lastPrompt: result.reply, ...(insistOnNameAfter ? { nameInsisted: true } : {}) });
+    if (insistOnNameAfter) {
+      return { ...result, reply: `${result.reply}\n\nPor cierto, ¿me regalas tu nombre? Así te doy una atención más personalizada. 😊` };
+    }
   }
   return result;
 }
