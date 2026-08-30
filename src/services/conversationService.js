@@ -10,6 +10,7 @@ const { loadState, saveState } = require('./persistentStore');
 const KB = require('../config/knowledgeBase');
 const { isWeekday, toIsoDate, formatDateEs } = require('../utils/dateEs');
 const { isWorkshopSlotAllowed, isExperienceTextSlotBlocked } = require('../utils/schedulingRules');
+const { GROUP_INVITE_URL } = require('../config/env');
 
 const SESSION_TTL = 20 * 60 * 1000;
 const CONTACT_PROFILE_TTL = 30 * 24 * 60 * 60 * 1000;
@@ -143,6 +144,39 @@ function migaoInfo() {
   return [
     `¡Claro que sí! 🕯️🥐 *${KB.business.name}* y *El Rinconcito del Migao* funcionan juntos en el mismo espacio: aquí encuentras nuestras velas artesanales y también puedes disfrutar de los migaos y las demás opciones del menú del salón de onces.`,
     `🕘 Atendemos todos los días de ${KB.business.hours}, de domingo a domingo, tanto en ${KB.business.name} como en El Rinconcito del Migao.`,
+  ].join('\n');
+}
+
+// Se dispara solo cuando el mensaje ARRANCA con "grupo" (o "grupos"), no
+// cuando la palabra aparece en medio de otra frase. El \b final es clave:
+// sin el, "grupal"/"grupales" (la modalidad GRUPAL de las clases, algo
+// totalmente distinto al grupo de WhatsApp) tambien harian match por
+// empezar con el prefijo "grup".
+function isGroupRequest(text) {
+  return /^grupos?\b/.test(normalizeText(text));
+}
+function getGroupInviteMessage() {
+  return [
+    '🌿 ¡Hola! Bienvenid@ a Con Sentido. 🕯️',
+    '',
+    'Qué alegría saber que quieres hacer parte de nuestra comunidad Consentidas.',
+    '',
+    'Este es un espacio exclusivo para quienes aman el mundo de las velas artesanales o desean aprender desde cero. Aquí compartimos:',
+    '',
+    '✨ Tips y técnicas exclusivas.',
+    '🎥 Avisos de nuestros lives antes que en redes.',
+    '🎓 Información sobre talleres presenciales y virtuales.',
+    '🛍️ Novedades, insumos y promociones especiales.',
+    '💡 Ideas para emprender con velas.',
+    '❤️ Un ambiente de aprendizaje y apoyo entre todos.',
+    '',
+    'Para unirte solo haz clic en el siguiente enlace:',
+    '',
+    GROUP_INVITE_URL,
+    '',
+    '📌 Para mantener la comunidad organizada, el grupo se abre en horarios específicos para preguntas y conversaciones. El resto del tiempo compartiremos contenido de valor, novedades y anuncios importantes.',
+    '',
+    '¡Nos encantará tenerte con nosotros! Bienvenid@ a la familia Con Sentido. 💛🕯️',
   ].join('\n');
 }
 
@@ -1217,6 +1251,12 @@ function handleConversationInner(chatId, text, meta = {}) {
   }
 
   if (!state) {
+    // Solicitud de acceso al grupo de WhatsApp: se revisa antes que
+    // cualquier otra cosa (solo aplica sin flujo activo, igual que el
+    // resto de este bloque). No se le pide el nombre antes de mandarle el
+    // link: es una accion puntual, no el inicio de una conversacion de
+    // ventas.
+    if (isGroupRequest(text)) return { reply: getGroupInviteMessage() };
     const greeting = isGreeting(text);
     const shortcut = detectWorkshopShortcut(text);
     const interest = detectInterest(text);
