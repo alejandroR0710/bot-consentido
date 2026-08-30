@@ -640,26 +640,52 @@ function receiptReceived(chatId) {
   return escalate(chatId, `¡Gracias! 🌿 Recibi tu comprobante. Tengo registrada la reserva/pedido a nombre de *${getContactProfile(chatId)?.reservationName || getContactProfile(chatId)?.nombre || 'la persona indicada'}*. Voy a enviarlo al equipo para validar el pago y confirmar.`);
 }
 
+// Ultimo mensaje del CLIENTE (no del bot) en el historial de conversacion,
+// para poder mostrarle al asesor que fue lo que la persona realmente
+// pregunto/escribio, en vez de solo el motivo interno del escalamiento.
+function lastCustomerMessage(chatId) {
+  const log = getConversationLog(chatId);
+  for (let i = log.length - 1; i >= 0; i--) {
+    if (log[i].from === 'cliente') return log[i].text;
+  }
+  return null;
+}
+function truncate(text, max) {
+  const t = String(text || '').trim();
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
+const SUMMARY_DIVIDER = '▬▬▬▬▬▬▬▬▬▬▬▬▬▬';
+
 function buildAdvisorSummary(chatId, reason) {
   const p = getContactProfile(chatId);
   const s = getSession(chatId);
   const d = s?.data || {};
+  const lastMessage = lastCustomerMessage(chatId);
   const lines = [
     '📋 *CLIENTE PARA ATENDER*',
-    `👤 Nombre: ${p?.nombre || 'Sin nombre'}`,
-    `📱 Chat: https://wa.me/${String(chatId).replace(/\D/g, '')}`,
-    `🎯 Interes: ${p?.productoInteres || 'Sin definir'}`,
-    `📌 Estado: ${p?.status || 'Sin definir'}`,
+    `👤 *Nombre:* ${p?.nombre || 'Sin nombre'}`,
+    // IMPORTANTE: el emoji y formato de esta linea ("💬 *Chat:* ...") tiene
+    // que coincidir exacto con el regex de fixAdvisorSummaryChatLink() en
+    // whatsappAlternative.js, que la reemplaza por un link ya resuelto
+    // (los @lid no traen el numero real en el propio id). Si se cambia
+    // aca, hay que cambiar tambien ese regex, o el reemplazo deja de
+    // funcionar en silencio (paso antes: quedaba el id crudo sin resolver).
+    `💬 *Chat:* https://wa.me/${String(chatId).replace(/\D/g, '')}`,
+    SUMMARY_DIVIDER,
+    `💭 *Escribió:* "${lastMessage ? truncate(lastMessage, 300) : '(sin mensaje de texto)'}"`,
+    SUMMARY_DIVIDER,
+    `🎯 *Interés:* ${p?.productoInteres || 'Sin definir'}`,
+    `📌 *Estado:* ${p?.status || 'Sin definir'}`,
   ];
-  if (p?.reservationName) lines.push(`🧾 Reserva/Pedido a nombre de: ${p.reservationName}`);
-  if (d.schedule) lines.push(`🕘 Jornada: ${d.schedule}`);
-  if (d.date) lines.push(`📅 Fecha: ${d.date}`);
-  if (d.people) lines.push(`👥 Personas: ${d.people}`);
-  if (d.occasion) lines.push(`🎉 Ocasion: ${d.occasion}`);
-  if (d.orderText) lines.push(`🛍️ Pedido: ${d.orderText}`);
-  if (d.delivery) lines.push(`🚚 Entrega: ${d.delivery}`);
-  if (d.courierName) lines.push(`🏍️ Mensajero: ${d.courierName} | Placa: ${d.courierPlate || '-'} | Codigo: ${d.courierCode || '-'}`);
-  lines.push(`📝 Motivo: ${reason}`);
+  if (p?.reservationName) lines.push(`🧾 *Reserva/Pedido a nombre de:* ${p.reservationName}`);
+  if (d.schedule) lines.push(`🕘 *Jornada:* ${d.schedule}`);
+  if (d.date) lines.push(`📅 *Fecha:* ${d.date}`);
+  if (d.people) lines.push(`👥 *Personas:* ${d.people}`);
+  if (d.occasion) lines.push(`🎉 *Ocasión:* ${d.occasion}`);
+  if (d.orderText) lines.push(`🛍️ *Pedido:* ${d.orderText}`);
+  if (d.delivery) lines.push(`🚚 *Entrega:* ${d.delivery}`);
+  if (d.courierName) lines.push(`🏍️ *Mensajero:* ${d.courierName} | Placa: ${d.courierPlate || '-'} | Codigo: ${d.courierCode || '-'}`);
+  lines.push(`📝 *Motivo del traspaso:* ${reason}`);
   return lines.join('\n');
 }
 // Historial de escalamientos (para el panel de administración). No existía
