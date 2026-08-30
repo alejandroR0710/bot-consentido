@@ -426,6 +426,27 @@ function parseSchedule(text) {
   if (n === 2 || containsAny(text, ['tarde', '3 a 7'])) return 'Tarde';
   return null;
 }
+// Las listas de fechas se muestran numeradas ("1. 📅 Domingo 30 de
+// agosto"), pero a diferencia de las demas opciones numeradas del bot
+// (que ya reconocen texto libre via containsAny), aca no hay palabras
+// clave fijas posibles porque la fecha cambia cada vez. Se reconoce si
+// el cliente escribe el dia+mes (ej. "30 de agosto") o el texto completo
+// formateado, en vez de tener que escribir el numero de la lista.
+function matchDateChoice(text, dates) {
+  for (let i = 0; i < dates.length; i++) {
+    const iso = dates[i];
+    const label = formatDateEs(iso); // "Domingo 30 de agosto"
+    if (containsAny(text, [label])) return i + 1;
+    const parts = label.split(' de ');
+    const dayNum = parts[0].split(' ').pop(); // "30"
+    const monthWord = parts[1];
+    if (monthWord && containsWord(text, [dayNum]) && containsAny(text, [monthWord])) return i + 1;
+  }
+  return null;
+}
+function isNoneOfTheseOption(text) {
+  return containsAny(text, ['ninguna me funciona', 'ninguna me sirve', 'ninguna sirve', 'ninguna', 'no me sirve', 'no me funciona']);
+}
 function reserveQuestion(chatId, product, extraData = {}) {
   updateProfile(chatId, { productoInteres: product, status: 'Reserva en proceso' });
   setSession(chatId, 'reservation_confirm', { ...extraData, product });
@@ -831,8 +852,9 @@ function handleState(chatId, text, meta = {}) {
   }
   if (state === 'basic_date_pick') {
     const dates = d.dates || []; // ISO
-    const n = numbered(text, dates.length + 1);
-    if (!n) return retry(chatId, 'Elige una de las fechas por numero o la opcion “Ninguna me funciona”.');
+    if (isNoneOfTheseOption(text)) return personalizedInfo(chatId);
+    const n = numbered(text, dates.length + 1) || matchDateChoice(text, dates);
+    if (!n) return retry(chatId, 'Elige una de las fechas por numero, escribiendo la fecha, o con la opcion “Ninguna me funciona”.');
     if (n === dates.length + 1) return personalizedInfo(chatId);
     const date = dates[n - 1];
     setSession(chatId, 'reservation_confirm', { product: KB.workshops.basicGroup.name, workshopKey: 'basicGroup', date });
@@ -852,8 +874,16 @@ function handleState(chatId, text, meta = {}) {
   }
   if (state === 'workshop_date_pick') {
     const dates = d.dates || [];
-    const n = numbered(text, dates.length + 1);
-    if (!n) return retry(chatId, 'Elige una de las fechas por numero o la opcion “Ninguna me funciona”.');
+    if (isNoneOfTheseOption(text)) {
+      const excludeDatesNone = [...(d.excludeDates || []), ...dates];
+      if (excludeDatesNone.length >= BOOKING_MAX_DATES_SHOWN) {
+        updateProfile(chatId, { status: 'Fecha no disponible - coordinar con asesor' });
+        return escalate(chatId, 'Quiero darte una fecha que sí te funcione. 🌿 Voy a pasarte con alguien de nuestro equipo para coordinar el día que mejor te sirva.');
+      }
+      return offerBookingDates(chatId, { product: d.product, workshopKey: d.workshopKey, schedule: d.schedule, excludeDates: excludeDatesNone });
+    }
+    const n = numbered(text, dates.length + 1) || matchDateChoice(text, dates);
+    if (!n) return retry(chatId, 'Elige una de las fechas por numero, escribiendo la fecha, o con la opcion “Ninguna me funciona”.');
     if (n === dates.length + 1) {
       // En vez de escalar de inmediato, se le siguen ofreciendo mas fechas
       // (hay calendario abierto de por medio); solo se escala si ya se le
