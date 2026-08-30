@@ -56,6 +56,18 @@ function firstName(chatId) {
   const p = getContactProfile(chatId);
   return p?.nombre ? p.nombre.split(/\s+/)[0] : null;
 }
+// Detecta un nombre declarado explicitamente ("soy Beatriz", "me llamo
+// Juan", "mi nombre es Ana"), venga solo o mezclado con otra cosa en el
+// mismo mensaje (ej. "1, soy Beatriz" tambien responde una pregunta del
+// flujo). Sin esto, ese texto se guardaria completo como "nombre"
+// (incluyendo el "soy"), o el "soy Beatriz" se perderia si el mensaje
+// tenia mas de una palabra.
+function extractDeclaredName(text) {
+  const n = normalizeText(text);
+  const m = n.match(/\b(?:soy|me llamo|mi nombre es)\s+([a-z]+)/);
+  if (!m) return null;
+  return m[1].charAt(0).toUpperCase() + m[1].slice(1);
+}
 function isYes(text) {
   const n = normalizeText(text);
   return /^(1|si|claro|dale|de una|quiero|ok|okay|listo)\b/.test(n) || n.includes('quiero reservar') || n.includes('quiero coordinar');
@@ -64,8 +76,13 @@ function isNoOrQuestion(text) {
   const n = normalizeText(text);
   return /^(2|no)\b/.test(n) || n.includes('duda') || n.includes('pregunta');
 }
+// Antes exigia que el mensaje fuera SOLO el numero (nada mas). Se
+// flexibiliza a "empieza con el numero" (ej. "1, soy Beatriz" o
+// "2 por favor") para no perder respuestas reales que traen algo mas
+// pegado, sin arriesgarse a leer de mas: el \b despues del numero exige
+// que no sean mas digitos pegados (ej. "1234567890" no matchea "12").
 function numbered(text, max) {
-  const m = String(text || '').trim().match(/^(\d{1,2})$/);
+  const m = String(text || '').trim().match(/^(\d{1,2})\b/);
   if (!m) return null;
   const n = Number(m[1]);
   return n >= 1 && n <= max ? n : null;
@@ -766,12 +783,14 @@ function handleState(chatId, text, meta = {}) {
   const d = s?.data || {};
 
   if (state === 'awaiting_name') {
-    const name = String(text || '').trim();
-    if (!name) return { reply: '¿Me regalas tu nombre para continuar? 🌿' };
+    const raw = String(text || '').trim();
+    if (!raw) return { reply: '¿Me regalas tu nombre para continuar? 🌿' };
     // Si el cliente vuelve a saludar aqui ("Hola" dos veces seguidas), no se
     // debe guardar el saludo como si fuera su nombre real.
-    if (isGreeting(name)) return { reply: '¡Hola de nuevo! 😊 Antes de continuar, ¿me regalas tu nombre?' };
-    updateProfile(chatId, { nombre: name });
+    if (isGreeting(raw)) return { reply: '¡Hola de nuevo! 😊 Antes de continuar, ¿me regalas tu nombre?' };
+    // Si contesta "soy Beatriz"/"me llamo Juan" en vez de solo el nombre,
+    // se guarda solo el nombre (no la frase completa con "soy" incluido).
+    updateProfile(chatId, { nombre: extractDeclaredName(raw) || raw });
     return goMain(chatId);
   }
   if (state === 'awaiting_interest') {
@@ -1116,17 +1135,28 @@ function handleConversationInner(chatId, text, meta = {}) {
   let insistOnNameAfter = false;
   if (state && session?.data?.needsName && !getContactProfile(chatId)?.nombre) {
     const trimmed = String(text || '').trim();
-    const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
-    const looksLikeName = wordCount === 1 && !/^\d+$/.test(trimmed);
-    if (looksLikeName) {
-      updateProfile(chatId, { nombre: trimmed });
+    const declaredName = extractDeclaredName(text);
+    if (declaredName) {
+      // Trae el nombre declarado con "soy"/"me llamo"/"mi nombre es",
+      // solo o junto con la respuesta al flujo (ej. "1, soy Beatriz"): se
+      // guarda el nombre y el mensaje completo sigue de largo hacia el
+      // flujo normal (mas abajo), para no perder la respuesta si tambien
+      // venia ahi.
+      updateProfile(chatId, { nombre: declaredName });
       setSession(chatId, state, { needsName: false, nameInsisted: false });
-      return { reply: session.data.lastPrompt ? `¡Un gusto, ${trimmed}! 😊 ${session.data.lastPrompt}` : `¡Un gusto, ${trimmed}! 😊` };
-    }
-    if (session.data.nameInsisted) {
-      setSession(chatId, state, { needsName: false });
     } else {
-      insistOnNameAfter = true;
+      const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
+      const looksLikeName = wordCount === 1 && !/^\d+$/.test(trimmed);
+      if (looksLikeName) {
+        updateProfile(chatId, { nombre: trimmed });
+        setSession(chatId, state, { needsName: false, nameInsisted: false });
+        return { reply: session.data.lastPrompt ? `¡Un gusto, ${trimmed}! 😊 ${session.data.lastPrompt}` : `¡Un gusto, ${trimmed}! 😊` };
+      }
+      if (session.data.nameInsisted) {
+        setSession(chatId, state, { needsName: false });
+      } else {
+        insistOnNameAfter = true;
+      }
     }
   }
 
