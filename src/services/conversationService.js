@@ -88,6 +88,22 @@ function numbered(text, max) {
   const n = Number(m[1]);
   return n >= 1 && n <= max ? n : null;
 }
+// Variante estricta (el numero es TODO el mensaje, nada mas) para usar
+// solo donde interpretar de mas un numero suelto es riesgoso: detectar el
+// interes principal se corre sobre CUALQUIER mensaje, incluso de una
+// conversacion sin flujo activo (ej. la sesion expiro a los 20 min y el
+// cliente responde tarde "3 personas" a una pregunta vieja) — con la
+// version flexible de numbered(), eso se leia como "elegi la opcion 3 del
+// menu" (Insumos) y desviaba la conversacion por completo. Los demas usos
+// de numbered() (ya dentro de un estado puntual, como "1, soy Beatriz"
+// respondiendo la pregunta que se le acaba de hacer) siguen con la version
+// flexible, porque ahi si hay certeza de que pregunta se esta respondiendo.
+function numberedExact(text, max) {
+  const m = String(text || '').trim().match(/^(\d{1,2})$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return n >= 1 && n <= max ? n : null;
+}
 function containsAny(text, words) {
   const n = normalizeText(text);
   return words.some((w) => n.includes(normalizeText(w)));
@@ -334,8 +350,17 @@ function goMain(chatId, opts) {
   return { reply: mainMenu(chatId, opts) };
 }
 
-function detectInterest(text) {
-  const num = numbered(text, 6);
+// loose=true permite un numero con texto pegado (ej. "3 por favor"); se usa
+// SOLO cuando de verdad se le acaba de mostrar el menu principal (estado
+// awaiting_interest). Por defecto (loose=false, numberedExact) es mas
+// estricto a proposito: esta funcion tambien se corre sobre CUALQUIER
+// mensaje de una conversacion sin flujo activo (ni siquiera se le mostro
+// un menu ahi, o la sesion expiro a los 20 min y esta respondiendo tarde
+// una pregunta vieja) — con la version floja, un mensaje como "3 personas"
+// se leia como "elegi la opcion 3" (Insumos) y desviaba la conversacion
+// por completo aunque nadie hubiera mostrado ningun menu.
+function detectInterest(text, loose = false) {
+  const num = loose ? numbered(text, 6) : numberedExact(text, 6);
   if (num) return ['talleres', 'experiencia', 'insumos', 'regalos', 'recordatorios', 'club'][num - 1];
   if (containsAny(text, ['taller', 'curso', 'masterclass', 'aprender velas'])) return 'talleres';
   if (containsAny(text, ['experiencia', 'plan con amigas', 'plan en pareja', 'hacer una vela juntos'])) return 'experiencia';
@@ -896,7 +921,7 @@ function handleState(chatId, text, meta = {}) {
       if (shortcut === 'advanced') return advancedInfo(chatId);
       if (shortcut === 'personalized') return personalizedInfo(chatId);
     }
-    const i = detectInterest(text);
+    const i = detectInterest(text, true); // aca si se le acaba de mostrar el menu principal
     if (!i) return { reply: 'Cuéntame un poco más: ¿buscas talleres, una experiencia, insumos, velas y regalos, recordatorios o el Club Creativo?' };
     if (i === 'talleres') return startTalleres(chatId);
     if (i === 'experiencia') return startExperience(chatId);
