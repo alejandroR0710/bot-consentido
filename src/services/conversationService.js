@@ -106,6 +106,9 @@ function isGreeting(text) {
     containsAny(text, [
       'hola', 'holi', 'buenas', 'buenos dias', 'buenas tardes', 'buenas noches',
       'buen dia', 'saludos', 'quiubo', 'qiubo', 'que mas',
+      // Abreviaciones muy comunes al escribir rapido en WhatsApp (sin las
+      // vocales de en medio): "Bnos dias", "Bnas tardes"/"Bnas noches".
+      'bnos dias', 'bnas tardes', 'bnas noches',
     ]) ||
     // "hi"/"hey"/"ola" son cortas y aparecen como subcadena de un monton de
     // palabras en español (ej. "hi" dentro de "hice", "dirigir"), por eso
