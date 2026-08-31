@@ -77,6 +77,19 @@ function isNoOrQuestion(text) {
   const n = normalizeText(text);
   return /^(2|no)\b/.test(n) || n.includes('duda') || n.includes('pregunta');
 }
+// Cuando se le dice al cliente "escribeme tu pregunta", hay que dejar el
+// estado listo para RECIBIRLA de verdad. Antes esto solo devolvia el texto
+// sin cambiar de estado: el cliente seguia "atrapado" en el mismo si/no de
+// antes, asi que su pregunta real (ej. "cuanto cuesta si es
+// personalizado") no la reconocia ninguna de las dos opciones y terminaba
+// en un retry -> escalamiento sin sentido, sin llegar a leerla nunca. Como
+// el bot no tiene un motor de preguntas libres, la respuesta es pasar con
+// un asesor (que ya ve la pregunta real gracias al historial de
+// conversacion usado en buildAdvisorSummary).
+function askFreeQuestion(chatId, reply) {
+  setSession(chatId, 'awaiting_free_question');
+  return { reply };
+}
 // Antes exigia que el mensaje fuera SOLO el numero (nada mas). Se
 // flexibiliza a "empieza con el numero" (ej. "1, soy Beatriz" o
 // "2 por favor") para no perder respuestas reales que traen algo mas
@@ -941,7 +954,7 @@ function handleState(chatId, text, meta = {}) {
   }
   if (state === 'basic_dates_confirm') {
     if (isYes(text)) return showBasicDates(chatId);
-    if (isNoOrQuestion(text)) return { reply: 'Claro. Escríbeme tu pregunta y con gusto te ayudo. 🌿' };
+    if (isNoOrQuestion(text)) return askFreeQuestion(chatId, 'Claro. Escríbeme tu pregunta y con gusto te ayudo. 🌿');
     return retry(chatId, '¿Quieres conocer las proximas fechas? 1. Si  2. Tengo una pregunta');
   }
   if (state === 'basic_date_pick') {
@@ -1015,7 +1028,7 @@ function handleState(chatId, text, meta = {}) {
       updateProfile(chatId, { status: 'Reservado - coordinar con asesor' });
       return escalate(chatId, `¡Perfecto! 🌿 Tu clase quedo agendada para el *${formatDateEs(d.date)}* en jornada de *${d.schedule}*. Voy a pasarte con alguien de nuestro equipo para confirmar los ultimos detalles y continuar con tu reserva.`);
     }
-    if (isNoOrQuestion(text)) return { reply: 'Claro. Escríbeme tu pregunta y con gusto te ayudo antes de coordinar. 😊' };
+    if (isNoOrQuestion(text)) return askFreeQuestion(chatId, 'Claro. Escríbeme tu pregunta y con gusto te ayudo antes de coordinar. 😊');
     return retry(chatId, '¿Deseas coordinar y reservar tu clase? 1. Si  2. Tengo una pregunta');
   }
   if (state === 'reservation_confirm' || state === 'experience_reserve_confirm') {
@@ -1029,7 +1042,7 @@ function handleState(chatId, text, meta = {}) {
       }
       return startPayment(chatId);
     }
-    if (isNoOrQuestion(text)) return { reply: 'Claro. Escríbeme tu pregunta y con gusto te ayudo. 😊' };
+    if (isNoOrQuestion(text)) return askFreeQuestion(chatId, 'Claro. Escríbeme tu pregunta y con gusto te ayudo. 😊');
     return retry(chatId, '¿Deseas reservar? 1. Si  2. Tengo una pregunta');
   }
 
@@ -1149,8 +1162,17 @@ function handleState(chatId, text, meta = {}) {
   }
   if (state === 'supplies_payment_confirm') {
     if (isYes(text)) return startPayment(chatId);
-    if (isNoOrQuestion(text)) return { reply: 'Claro. Escríbeme tu pregunta y la resolvemos antes de pagar. 😊' };
+    if (isNoOrQuestion(text)) return askFreeQuestion(chatId, 'Claro. Escríbeme tu pregunta y la resolvemos antes de pagar. 😊');
     return retry(chatId, '¿Quieres continuar con el pago? 1. Si  2. Tengo una pregunta');
+  }
+
+  if (state === 'awaiting_free_question') {
+    // El bot no tiene motor de preguntas libres, asi que la pregunta real del
+    // cliente (que ya quedo visible en el resumen del asesor gracias a
+    // lastCustomerMessage) se resuelve pasandola directo a una persona, sin
+    // volver a intentar adivinarla con la logica rigida de si/no.
+    updateProfile(chatId, { status: 'Pregunta puntual - coordinar con asesor' });
+    return escalate(chatId, 'Gracias por tu pregunta. 🌿 Voy a pasarte con alguien de nuestro equipo para resolverla y seguir contigo.');
   }
 
   if (state === 'gifts_category') {
