@@ -153,8 +153,25 @@ async function sendAdvisorSummary(summary) {
   try {
     await sendWhatsappMessage(advisorChatId, summary);
     console.log(`📋 Resumen del cliente enviado al asesor (${advisorChatId}).`);
+    return;
   } catch (error) {
-    console.error('❌ No se pudo enviar el resumen al asesor:', error);
+    console.warn(`⚠️ Primer intento fallido al enviar el resumen al asesor (${advisorChatId}): ${error?.message || error}. Reintentando...`);
+  }
+  // Segundo intento: cuando no hay ADVISOR_WHATSAPP_NUMBER configurado,
+  // esto se manda a "Mensajes a mí mismo". Ese chat en particular a veces
+  // no esta cargado en el Store interno de WhatsApp Web hasta que se abre
+  // al menos una vez, y sendMessage() directo sobre el chatId falla ahi
+  // aunque el chat exista de verdad. Se busca/crea el objeto Chat primero
+  // y se manda desde ese objeto en vez del atajo client.sendMessage().
+  markBotSending(advisorChatId);
+  try {
+    const chat = await client.getChatById(advisorChatId);
+    await chat.sendMessage(summary);
+    console.log(`📋 Resumen del cliente enviado al asesor (${advisorChatId}) en el segundo intento.`);
+  } catch (error) {
+    console.error(`❌ No se pudo enviar el resumen al asesor (${advisorChatId}) en ningun intento:`, error?.message || error);
+  } finally {
+    markBotSendDone(advisorChatId);
   }
 }
 
