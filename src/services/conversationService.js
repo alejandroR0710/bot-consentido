@@ -1155,9 +1155,15 @@ function handleState(chatId, text, meta = {}) {
     return { reply: ['Perfecto. ¿Tienes un presupuesto aproximado para el regalo?', '1. Hasta $40.000', '2. Entre $40.000 y $70.000', '3. Mas de $70.000', '4. Prefiero ver opciones'].join('\n') };
   }
   if (state === 'bouquet_budget') {
+    // Antes seguia automatizado (mandaba el catalogo generico y le pedia
+    // elegir uno), pero eso no tenia relacion real con el presupuesto que
+    // acababa de dar: el catalogo no esta filtrado por precio, asi que el
+    // bot no puede recomendar nada acorde. Se pasa con un asesor, igual
+    // que ya se hacia en el flujo de "no se que elegir" (gift_helper_budget).
     const { pdfPath } = getPdfIfNotSentBefore(chatId, 'velas_bouquets');
-    setSession(chatId, 'bouquet_choice', { bouquetBudget: String(text).trim() });
-    return { reply: ['Perfecto. 🌸 Te comparto las opciones de bouquets disponibles.', 'Cuando veas uno que te guste, escríbeme el nombre o referencia y seguimos con tu pedido.'].join('\n'), pdfPath };
+    updateProfile(chatId, { status: 'Presupuesto de bouquet definido - coordinar con asesor' });
+    const result = escalate(chatId, 'Gracias. 🌿 Con ese presupuesto, alguien del equipo te muestra las opciones de bouquets que mejor se ajusten y te ayuda a elegir.');
+    return pdfPath ? { ...result, pdfPath } : result;
   }
   if (state === 'bouquet_choice') {
     setSession(chatId, 'bouquet_card', { bouquetChoice: String(text).trim() });
