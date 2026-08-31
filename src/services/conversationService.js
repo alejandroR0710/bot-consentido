@@ -375,12 +375,24 @@ function goMain(chatId, opts) {
 function detectInterest(text, loose = false) {
   const num = loose ? numbered(text, 6) : numberedExact(text, 6);
   if (num) return ['talleres', 'experiencia', 'insumos', 'regalos', 'recordatorios', 'club'][num - 1];
-  if (containsAny(text, ['taller', 'curso', 'masterclass', 'aprender velas'])) return 'talleres';
+  // "aprender velas" como frase exacta se quedaba corto: no reconocia
+  // variantes reales como "aprender hacer velas" o "aprender a hacer
+  // velas" (el "hacer"/"a hacer" de en medio rompia el match de
+  // substring). Se agregan esas variantes y, como respaldo, se acepta
+  // cualquier mensaje que traiga la palabra "aprender" junto con
+  // "vela"/"velas", sin importar el orden ni las palabras de en medio.
+  if (
+    containsAny(text, ['taller', 'curso', 'masterclass', 'aprender velas', 'aprender hacer velas', 'aprender a hacer velas', 'hacer velas']) ||
+    (containsWord(text, ['aprender']) && containsWord(text, ['vela', 'velas']))
+  ) return 'talleres';
   if (containsAny(text, ['experiencia', 'plan con amigas', 'plan en pareja', 'hacer una vela juntos'])) return 'experiencia';
   if (containsAny(text, ['insumo', 'fragancia', 'cera', 'pabilo', 'molde', 'colorante'])) return 'insumos';
   if (containsAny(text, ['bouquet', 'vela aromatica', 'vela decorativa', 'difusor', 'kit de regalo', 'regalo'])) return 'regalos';
   if (containsAny(text, ['recordatorio', 'matrimonio', 'baby shower', '15 anos', 'bautizo'])) return 'recordatorios';
-  if (containsAny(text, ['club creativo', 'ninos', 'niños', 'ilustracion infantil'])) return 'club';
+  // "club" solo (con limite de palabra) tambien cuenta: no hay ninguna otra
+  // categoria que use esa palabra, y asi se reconoce aunque la escriban con
+  // errores de dedo en "creativo" (ej. "club recreativo").
+  if (containsAny(text, ['club creativo', 'ninos', 'niños', 'ilustracion infantil']) || containsWord(text, ['club'])) return 'club';
   return null;
 }
 
