@@ -654,6 +654,22 @@ function sendSupplyCatalog(chatId, category, label) {
     pdfPath,
   };
 }
+// Antes se aceptaba CUALQUIER texto en 'supplies_order_text' como si fuera
+// el pedido en si, sin revisar que de verdad describiera productos y
+// cantidades. Un mensaje como "Quisiera ver los insumos" (que en realidad
+// pedia ver el catalogo, no estaba haciendo un pedido) quedaba registrado
+// tal cual como "tu pedido" y arrastraba al cliente directo a metodo de
+// envio para un pedido que no existia.
+function looksLikeSupplyOrder(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  // Un numero suelto (ej. "2", resto de una opcion de menu anterior que ya
+  // no aplica aca) no cuenta como pedido por si solo -- necesita traer algo
+  // mas (cantidad con unidad, o el nombre de un producto).
+  if (/^\d{1,3}$/.test(raw)) return false;
+  if (/\d/.test(raw)) return true; // trae cantidades (2 kg, 5 metros, etc.)
+  return containsAny(raw, ['kg', 'gramos', 'metro', 'metros', ' ml', 'unidad', 'unidades', 'frasco', 'pote', 'litro', 'cera', 'pabilo', 'fragancia', 'molde', 'colorante', 'envase']);
+}
 function startOrderCapture(chatId) {
   updateProfile(chatId, { status: 'Pedido en construccion' });
   setSession(chatId, 'supplies_order_text', { cart: [] });
@@ -1130,7 +1146,12 @@ function handleState(chatId, text, meta = {}) {
     return retry(chatId, 'Elige: 1) fragancias, 2) otros insumos, 3) hacer pedido o 4) necesito asesoria.');
   }
   if (state === 'supplies_after_catalog') {
-    if (containsAny(text, ['pedido', 'quiero', 'necesito', 'kg', 'gramos', 'metros', 'ml'])) {
+    // Antes bastaba con que el mensaje trajera "quiero" o "necesito" para
+    // registrarlo como pedido -- palabras demasiado genericas que tambien
+    // aparecen en frases que NO son un pedido (ej. "quiero ver el
+    // catalogo"). Se usa la misma validacion de looksLikeSupplyOrder que
+    // en 'supplies_order_text' para evitar el mismo problema aca.
+    if (looksLikeSupplyOrder(text)) {
       setSession(chatId, 'supplies_order_confirm', { orderText: String(text).trim() });
       return { reply: [`Anote tu pedido asi:\n${String(text).trim()}`, '', '¿Esta correcto?', '1. Si, continuar', '2. Quiero modificarlo'].join('\n') };
     }
@@ -1147,6 +1168,9 @@ function handleState(chatId, text, meta = {}) {
   }
   if (state === 'supplies_order_text') {
     const orderText = String(text).trim();
+    if (!looksLikeSupplyOrder(orderText)) {
+      return retry(chatId, 'Cuentame los productos que necesitas junto con sus cantidades y presentaciones en un solo mensaje (ej. "2 kg de cera de soya APF, 5 metros de pabilo M y una fragancia Cereza Roja de 120 ml").');
+    }
     setSession(chatId, 'supplies_order_confirm', { orderText });
     return { reply: [`Anote tu pedido asi:\n${orderText}`, '', '¿Esta correcto?', '1. Si, continuar', '2. Quiero modificarlo'].join('\n') };
   }
