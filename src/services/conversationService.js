@@ -34,6 +34,14 @@ const paymentReminderTimers = new Map();
 const followUpArmedAt = new Map();
 const paymentReminderArmedAt = new Map();
 const lastAdvisorNotificationAt = new Map();
+// Cuando se escala una conversacion, clearSession() borra el estado por
+// completo. Si el cliente manda otro mensaje justo despues (ej. un numero
+// suelto que en realidad respondia al menu ANTERIOR, ya invalido), sin
+// esta marca el bot lo trataba como un mensaje totalmente nuevo y lo metia
+// de una en un tema random del menu principal (ver RECENT_ESCALATION_MS
+// mas abajo).
+const recentlyEscalatedAt = new Map();
+const RECENT_ESCALATION_MS = 15 * 60 * 1000;
 // Historial simple de mensajes cliente/bot por chat, para poder leer la
 // conversacion desde el panel (sobre todo en Escalamientos). No incluye
 // los mensajes manuales que tu escribes cuando pausas el bot: esos ya se
@@ -809,6 +817,7 @@ function escalate(chatId, message) {
   clearFollowUps(chatId);
   clearPaymentReminder(chatId);
   clearSession(chatId);
+  recentlyEscalatedAt.set(chatId, now);
   return { reply: message, final: true, escalatedToAdvisor: true, advisorSummary, contactData: getContactProfile(chatId) };
 }
 
@@ -1331,6 +1340,20 @@ function handleConversationInner(chatId, text, meta = {}) {
     // link: es una accion puntual, no el inicio de una conversacion de
     // ventas.
     if (isGroupRequest(text)) return { reply: getGroupInviteMessage() };
+    // Si se acaba de escalar esta conversacion (clearSession la dejo sin
+    // estado) y lo que llega es un numero suelto, lo mas probable es que en
+    // realidad estaba respondiendo al menu ANTERIOR (ya invalido, ese
+    // estado se borro), no eligiendo una opcion nueva del menu principal.
+    // Antes esto se malinterpretaba en silencio como si fuera el primer
+    // mensaje de una conversacion nueva y lo mandaba a un tema random
+    // (ej. Insumos) sin relacion con lo que en verdad pedia. Los mensajes
+    // con palabras reales SI se dejan pasar normal: si el cliente escribe
+    // un tema nuevo con sus palabras mientras espera, tiene sentido
+    // atenderlo.
+    const escalatedAt = recentlyEscalatedAt.get(chatId) || 0;
+    if (escalatedAt && Date.now() - escalatedAt < RECENT_ESCALATION_MS && numberedExact(text, 6)) {
+      return { reply: 'Ya te tengo en la fila para que alguien del equipo te escriba pronto. 🙏 Si necesitas algo mas mientras tanto, cuentamelo con tus palabras.' };
+    }
     const greeting = isGreeting(text);
     const shortcut = detectWorkshopShortcut(text);
     const interest = detectInterest(text);
