@@ -362,7 +362,7 @@ function mainMenu(chatId, opts = {}) {
     '3. Insumos para fabricar velas',
     '4. Velas y regalos listos',
     '5. Recordatorios para eventos',
-    '6. Club Creativo',
+    // '6. Club Creativo', // Comentado: no se esta ofreciendo por ahora.
     'Puedes responderme con el numero o simplemente contarme con tus palabras 😊.',
   ].join('\n');
 }
@@ -381,8 +381,10 @@ function goMain(chatId, opts) {
 // se leia como "elegi la opcion 3" (Insumos) y desviaba la conversacion
 // por completo aunque nadie hubiera mostrado ningun menu.
 function detectInterest(text, loose = false) {
-  const num = loose ? numbered(text, 6) : numberedExact(text, 6);
-  if (num) return ['talleres', 'experiencia', 'insumos', 'regalos', 'recordatorios', 'club'][num - 1];
+  // Club Creativo (antes opcion 6) esta comentado: no se esta ofreciendo
+  // por ahora, asi que el menu principal quedo con 5 opciones.
+  const num = loose ? numbered(text, 5) : numberedExact(text, 5);
+  if (num) return ['talleres', 'experiencia', 'insumos', 'regalos', 'recordatorios' /* , 'club' */][num - 1];
   // "aprender velas" como frase exacta se quedaba corto: no reconocia
   // variantes reales como "aprender hacer velas" o "aprender a hacer
   // velas" (el "hacer"/"a hacer" de en medio rompia el match de
@@ -397,10 +399,10 @@ function detectInterest(text, loose = false) {
   if (containsAny(text, ['insumo', 'fragancia', 'cera', 'pabilo', 'molde', 'colorante'])) return 'insumos';
   if (containsAny(text, ['bouquet', 'vela aromatica', 'vela decorativa', 'difusor', 'kit de regalo', 'regalo'])) return 'regalos';
   if (containsAny(text, ['recordatorio', 'matrimonio', 'baby shower', '15 anos', 'bautizo'])) return 'recordatorios';
-  // "club" solo (con limite de palabra) tambien cuenta: no hay ninguna otra
-  // categoria que use esa palabra, y asi se reconoce aunque la escriban con
-  // errores de dedo en "creativo" (ej. "club recreativo").
-  if (containsAny(text, ['club creativo', 'ninos', 'niños', 'ilustracion infantil']) || containsWord(text, ['club'])) return 'club';
+  // Club Creativo comentado: no se esta ofreciendo por ahora. Para
+  // reactivarlo, descomentar esta linea (y las demas marcadas "Club
+  // Creativo" en este archivo).
+  // if (containsAny(text, ['club creativo', 'ninos', 'niños', 'ilustracion infantil']) || containsWord(text, ['club'])) return 'club';
   return null;
 }
 
@@ -972,13 +974,14 @@ function handleState(chatId, text, meta = {}) {
       if (shortcut === 'personalized') return personalizedInfo(chatId);
     }
     const i = detectInterest(text, true); // aca si se le acaba de mostrar el menu principal
-    if (!i) return { reply: 'Cuéntame un poco más: ¿buscas talleres, una experiencia, insumos, velas y regalos, recordatorios o el Club Creativo?' };
+    if (!i) return { reply: 'Cuéntame un poco más: ¿buscas talleres, una experiencia, insumos, velas y regalos o recordatorios?' };
     if (i === 'talleres') return startTalleres(chatId);
     if (i === 'experiencia') return startExperience(chatId);
     if (i === 'insumos') return startSupplies(chatId);
     if (i === 'regalos') return startGifts(chatId);
     if (i === 'recordatorios') return startPendingFlow(chatId, 'Recordatorios para eventos');
-    if (i === 'club') return startPendingFlow(chatId, 'Club Creativo');
+    // Club Creativo comentado: no se esta ofreciendo por ahora.
+    // if (i === 'club') return startPendingFlow(chatId, 'Club Creativo');
   }
 
   if (state === 'taller_level') {
