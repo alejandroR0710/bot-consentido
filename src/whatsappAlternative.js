@@ -140,12 +140,25 @@ client.on('disconnected', (reason) => {
   }, 10000);
 });
 
+// ADVISOR_WHATSAPP_NUMBER se configura en el .env como un numero de
+// telefono normal (ej. "+57 305 3551815"), no como un chatId de
+// whatsapp-web.js. Sin esta conversion, client.sendMessage() recibe algo
+// como "+573053551815" (que no es un chatId valido) y falla siempre, tanto
+// en el intento directo como en el fallback por getChatById.
+function toChatId(numberOrId) {
+  const raw = String(numberOrId || '').trim();
+  if (!raw) return '';
+  if (/@(c\.us|g\.us|lid)$/.test(raw)) return raw;
+  const digits = raw.replace(/\D/g, '');
+  return digits ? `${digits}@c.us` : '';
+}
+
 // A dónde se envía el "cuadro informativo" cuando el bot escala una
 // conversación a un asesor humano. Si no hay un número aparte configurado
 // (ADVISOR_WHATSAPP_NUMBER), se manda al propio chat del bot ("Mensajes a
 // mí mismo"), ya que hoy solo hay un número/dispositivo para todo el negocio.
 async function sendAdvisorSummary(summary) {
-  const advisorChatId = ADVISOR_WHATSAPP_NUMBER || (client.info && client.info.wid && client.info.wid._serialized);
+  const advisorChatId = toChatId(ADVISOR_WHATSAPP_NUMBER) || (client.info && client.info.wid && client.info.wid._serialized);
   if (!advisorChatId) {
     console.warn('⚠️ No se pudo determinar a quién enviar el resumen del asesor.');
     return;
