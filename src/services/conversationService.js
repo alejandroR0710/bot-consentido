@@ -1209,7 +1209,20 @@ function handleState(chatId, text, meta = {}) {
     return { reply: ['Perfecto. Ya registre los datos de envio y el embalaje de $2.000.', '¿Quieres continuar con el pago?', '1. Si', '2. Tengo una pregunta'].join('\n') };
   }
   if (state === 'supplies_payment_confirm') {
-    if (isYes(text)) return startPayment(chatId);
+    if (isYes(text)) {
+      // Antes se pasaba directo a pedir el nombre para el pago
+      // (startPayment), sin validar si hay inventario real para lo que
+      // pidio. Antes de confirmar el pedido y recibir cualquier pago, hay
+      // que avisarle que se va a validar disponibilidad, listarle los
+      // productos que le interesan, y pasarlo con un asesor -- no seguir
+      // automatizado hasta ahi.
+      updateProfile(chatId, { status: 'Pedido de insumos - validar inventario' });
+      return escalate(chatId, [
+        'Antes de confirmar tu pedido y continuar con el pago, necesitamos validar la disponibilidad de inventario. 🌿',
+        d.orderText ? `Productos de tu interes:\n${d.orderText}` : '',
+        'Voy a pasarte con alguien del equipo para confirmar que hay disponibilidad y coordinar el pago contigo.',
+      ].filter(Boolean).join('\n\n'));
+    }
     if (isNoOrQuestion(text)) return askFreeQuestion(chatId, 'Claro. Escríbeme tu pregunta y la resolvemos antes de pagar. 😊');
     return retry(chatId, '¿Quieres continuar con el pago? 1. Si  2. Tengo una pregunta');
   }
