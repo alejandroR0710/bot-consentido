@@ -1238,7 +1238,12 @@ function handleState(chatId, text, meta = {}) {
   }
   if (state === 'gift_helper_for_whom') {
     setSession(chatId, 'gift_helper_budget', { giftContext: String(text).trim() });
-    return { reply: ['Perfecto. ¿Que presupuesto aproximado tienes para el regalo?', '1. Hasta $40.000', '2. Entre $40.000 y $70.000', '3. Mas de $70.000', '4. Prefiero ver opciones'].join('\n') };
+    // Antes se le mostraban rangos fijos para elegir (1 al 4), pero de
+    // todos modos el siguiente estado (gift_helper_budget) escala con
+    // cualquier respuesta sin revisar el numero -- asi que se deja que la
+    // persona cuente su presupuesto con sus propias palabras en vez de
+    // sugerir que hay que elegir de una lista cerrada.
+    return { reply: 'Perfecto. ¿Cual es tu presupuesto aproximado para el regalo? Cuentamelo con tus palabras.' };
   }
   if (state === 'gift_helper_budget') {
     updateProfile(chatId, { status: 'Regalo por recomendar' });
@@ -1247,7 +1252,10 @@ function handleState(chatId, text, meta = {}) {
   if (state === 'bouquet_occasion') {
     const occasion = String(text).trim();
     setSession(chatId, 'bouquet_budget', { bouquetOccasion: occasion });
-    return { reply: ['Perfecto. ¿Tienes un presupuesto aproximado para el regalo?', '1. Hasta $40.000', '2. Entre $40.000 y $70.000', '3. Mas de $70.000', '4. Prefiero ver opciones'].join('\n') };
+    // Igual que en gift_helper_for_whom: se deja que la persona diga su
+    // presupuesto con sus propias palabras en vez de rangos fijos, ya que
+    // 'bouquet_budget' de todos modos escala con cualquier respuesta.
+    return { reply: 'Perfecto. ¿Cual es tu presupuesto aproximado para el regalo? Cuentamelo con tus palabras.' };
   }
   if (state === 'bouquet_budget') {
     // Antes seguia automatizado (mandaba el catalogo generico y le pedia
