@@ -77,6 +77,33 @@ function extractDeclaredName(text) {
   if (!m) return null;
   return m[1].charAt(0).toUpperCase() + m[1].slice(1);
 }
+// Cuando se le pide el nombre al cliente, su respuesta se guardaba TAL
+// CUAL como si fuera su nombre, sin revisar si de verdad se parecia a uno.
+// Mensajes como "Para pedir", "Que precio tienen los jarrones con velas" o
+// "Es que imaginate que necesitamos esto para el viernes" (la persona
+// contando de una lo que necesita, en vez de dar su nombre) terminaban
+// guardados como "nombre" del cliente. Esta funcion filtra esos casos:
+// preguntas, frases largas, o frases que traen palabras que casi nunca
+// aparecen en un nombre real (verbos, conectores, palabras del negocio).
+const NON_NAME_WORDS = [
+  'que', 'es', 'de', 'del', 'la', 'el', 'los', 'las', 'para', 'por', 'con',
+  'donde', 'cuales', 'cual', 'cuanto', 'cuanta', 'tienes', 'tiene', 'tienen',
+  'manejas', 'manejan', 'necesito', 'necesitamos', 'quiero', 'quisiera',
+  'deseo', 'desea', 'puedes', 'podrias', 'imaginate', 'esto', 'este', 'esta',
+  'informacion', 'gracias', 'porfavor', 'favor', 'catalogo', 'precio',
+  'precios', 'costo', 'costos', 'pedir', 'pedido', 'comprar', 'enviar',
+  'mira', 'aver', 'hola', 'buenas', 'buenos',
+];
+function looksLikeRealName(text) {
+  const raw = String(text || '').trim();
+  if (!raw || /[?¿]/.test(raw) || /\d/.test(raw)) return false;
+  if (!/[a-zA-ZÀ-ÿ]/.test(raw)) return false; // solo emojis/simbolos, no es un nombre
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length > 3) return false;
+  const n = normalizeText(raw);
+  if (NON_NAME_WORDS.some((w) => new RegExp(`\\b${w}\\b`).test(n))) return false;
+  return true;
+}
 function isYes(text) {
   const n = normalizeText(text);
   return /^(1|si|claro|dale|de una|quiero|ok|okay|listo)\b/.test(n) || n.includes('quiero reservar') || n.includes('quiero coordinar');
@@ -969,8 +996,19 @@ function handleState(chatId, text, meta = {}) {
     if (isGreeting(raw)) return { reply: '¡Hola de nuevo! 😊 Antes de continuar, ¿me regalas tu nombre?' };
     // Si contesta "soy Beatriz"/"me llamo Juan" en vez de solo el nombre,
     // se guarda solo el nombre (no la frase completa con "soy" incluido).
-    updateProfile(chatId, { nombre: extractDeclaredName(raw) || raw });
-    return goMain(chatId);
+    const declared = extractDeclaredName(raw);
+    if (declared) { updateProfile(chatId, { nombre: declared }); return goMain(chatId); }
+    if (looksLikeRealName(raw)) { updateProfile(chatId, { nombre: raw }); return goMain(chatId); }
+    // No parece un nombre real (trae una pregunta, varias palabras, o
+    // palabras tipicas de una frase completa) -- seguramente esta
+    // contando de una lo que necesita en vez de dar su nombre. Antes esto
+    // se guardaba tal cual como si fuera su nombre (ej. "Para pedir", "Que
+    // precio tienen los jarrones con velas" quedaban como "nombre" del
+    // cliente). Ahora se procesa como su interes real, igual que el combo
+    // saludo+interes de mas abajo, y se insiste con el nombre en la
+    // siguiente respuesta (needsName).
+    setSession(chatId, 'awaiting_interest', { needsName: true });
+    return handleState(chatId, text, meta);
   }
   if (state === 'awaiting_interest') {
     // El atajo por taller especifico se revisa antes que la categoria
