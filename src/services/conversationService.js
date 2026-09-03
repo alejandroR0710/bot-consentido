@@ -391,9 +391,21 @@ function detectInterest(text, loose = false) {
   // substring). Se agregan esas variantes y, como respaldo, se acepta
   // cualquier mensaje que traiga la palabra "aprender" junto con
   // "vela"/"velas", sin importar el orden ni las palabras de en medio.
+  //
+  // Ademas: si la sesion vencio (20 min sin responder) justo cuando el
+  // cliente estaba contestando el menu de nivel de taller ("1. Nunca he
+  // hecho velas...", "2. Ya hago velas...", etc.), su respuesta llega sin
+  // ningun estado activo y cae aca. Frases como "1. Me gustaria aprender
+  // de cero" no traen "vela" para nada, asi que se quedaban sin
+  // reconocer y el bot no respondia nada. Se agrega el mismo vocabulario
+  // que ya usa workshopLevel() para el nivel (cero -- cubre "desde cero"
+  // Y la variante coloquial sin la "s", "de cero" -- tecnicas nuevas,
+  // personalizada) combinado con "aprender", para que estas respuestas
+  // tardias tambien reinicien el flujo de talleres en vez de quedar en
+  // silencio.
   if (
     containsAny(text, ['taller', 'curso', 'masterclass', 'aprender velas', 'aprender hacer velas', 'aprender a hacer velas', 'hacer velas']) ||
-    (containsWord(text, ['aprender']) && containsWord(text, ['vela', 'velas']))
+    (containsWord(text, ['aprender']) && (containsWord(text, ['vela', 'velas', 'cero']) || containsAny(text, ['nunca he hecho', 'tecnicas nuevas', 'clase personalizada'])))
   ) return 'talleres';
   if (containsAny(text, ['experiencia', 'plan con amigas', 'plan en pareja', 'hacer una vela juntos'])) return 'experiencia';
   if (containsAny(text, ['insumo', 'fragancia', 'cera', 'pabilo', 'molde', 'colorante'])) return 'insumos';
