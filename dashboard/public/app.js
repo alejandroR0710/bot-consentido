@@ -95,6 +95,35 @@ function chatLinkCell(chatId, chatLink) {
     : `<span class="muted" title="${chatId}">Se resuelve cuando el bot esté conectado</span>`;
 }
 
+// ---------- conversaciones (TODOS los chats que atendio el bot) ----------
+async function refreshConversations() {
+  const res = await fetch('/api/conversations');
+  if (res.status === 401) return;
+  const { conversations } = await res.json();
+  const tbody = $('#conversationsTable tbody');
+  tbody.innerHTML = '';
+  $('#conversationsEmpty').hidden = conversations.length > 0;
+  conversations.forEach((c) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${c.nombre || 'Sin nombre'}</td>
+      <td class="link-cell">${chatLinkCell(c.chatId, c.chatLink)}</td>
+      <td>${c.status || '—'}</td>
+      <td>${c.messageCount}</td>
+      <td>${c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleString('es-CO') : '—'}</td>
+      <td></td>
+    `;
+    const convCell = tr.lastElementChild;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'link-btn';
+    btn.textContent = 'Ver conversación';
+    btn.addEventListener('click', () => openConversationModal(c.chatId, c.nombre));
+    convCell.appendChild(btn);
+    tbody.appendChild(tr);
+  });
+}
+
 // ---------- chats pausados ----------
 function formatDuration(ms) {
   if (ms <= 0) return 'ya mismo';
@@ -662,6 +691,7 @@ $('#configForm').addEventListener('submit', async (e) => {
 async function refreshAll() {
   await refreshStatus();
   await refreshLogs();
+  await refreshConversations();
   await refreshPaused();
   await refreshContacts();
   await refreshEscalations();
@@ -673,6 +703,7 @@ loadBookings();
 refreshAll();
 setInterval(refreshStatus, 4000);
 setInterval(refreshLogs, 2500);
+setInterval(refreshConversations, 15000);
 setInterval(refreshPaused, 15000);
 setInterval(refreshContacts, 20000);
 setInterval(refreshEscalations, 20000);

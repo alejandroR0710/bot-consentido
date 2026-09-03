@@ -485,6 +485,35 @@ app.get('/api/escalations', (req, res) => {
   res.json({ escalations: list });
 });
 
+// Listado de TODAS las conversaciones que el bot ha atendido, no solo las
+// que llegaron a tener nombre (Clientes), se pausaron (Chats pausados) o
+// se escalaron (Escalamientos). Antes, un chat que solo saludaba y nunca
+// contestaba su nombre no aparecia en ningun lado del panel, aunque el
+// mensaje ya estuviera guardado en conversationLogs -- este endpoint lista
+// esos chatIds directamente desde ahi.
+app.get('/api/conversations', (req, res) => {
+  const state = readBotState();
+  const links = readContactLinks();
+  const contactProfiles = state.contactProfiles || {};
+  const logs = state.conversationLogs || {};
+  const list = Object.entries(logs)
+    .filter(([, messages]) => Array.isArray(messages) && messages.length > 0)
+    .map(([chatId, messages]) => {
+      const last = messages[messages.length - 1];
+      return {
+        chatId,
+        chatLink: buildChatLink(chatId, links),
+        nombre: contactProfiles[chatId]?.nombre || null,
+        status: contactProfiles[chatId]?.status || null,
+        messageCount: messages.length,
+        lastMessageAt: last ? last.timestamp : null,
+        lastMessageFrom: last ? last.from : null,
+      };
+    })
+    .sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
+  res.json({ conversations: list });
+});
+
 // Historial de mensajes cliente/bot de un chat (lo guarda
 // conversationService.js). Solo cubre lo que el bot conversó automático;
 // los mensajes manuales que se escriben al pausar el bot no quedan acá

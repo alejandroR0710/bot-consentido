@@ -17,6 +17,7 @@
 
   <nav class="tabs">
     <button class="tab-btn active" data-tab="estado">Estado</button>
+    <button class="tab-btn" data-tab="conversaciones">Conversaciones</button>
     <button class="tab-btn" data-tab="pausados">Chats pausados</button>
     <button class="tab-btn" data-tab="clientes">Clientes</button>
     <button class="tab-btn" data-tab="escalamientos">Escalamientos</button>
@@ -54,6 +55,20 @@
           <label class="checkbox-label"><input type="checkbox" id="autoScroll" checked /> Auto-scroll</label>
         </div>
         <pre id="logView" class="log-view"></pre>
+      </div>
+    </section>
+
+    <section id="tab-conversaciones" class="tab-panel">
+      <div class="card">
+        <div class="card-header-row">
+          <h2>Conversaciones</h2>
+          <p class="muted">Todo chat que el bot haya atendido, aunque nunca haya dado su nombre. Captura cada mensaje mientras el bot esta activo, hasta que la conversacion termina o tomas el chat manualmente (esos mensajes tuyos no quedan aca, se ven directo en WhatsApp).</p>
+        </div>
+        <table class="data-table" id="conversationsTable">
+          <thead><tr><th>Cliente</th><th>Chat</th><th>Estado</th><th>Mensajes</th><th>Último mensaje</th><th>Conversación</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-state" id="conversationsEmpty" hidden>Todavía no hay conversaciones registradas.</p>
       </div>
     </section>
 
