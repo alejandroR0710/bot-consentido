@@ -407,34 +407,40 @@ function goMain(chatId, opts) {
 // una pregunta vieja) — con la version floja, un mensaje como "3 personas"
 // se leia como "elegi la opcion 3" (Insumos) y desviaba la conversacion
 // por completo aunque nadie hubiera mostrado ningun menu.
+// "aprender velas" como frase exacta se quedaba corto: no reconocia
+// variantes reales como "aprender hacer velas" o "aprender a hacer velas"
+// (el "hacer"/"a hacer" de en medio rompia el match de substring). Se
+// agregan esas variantes y, como respaldo, se acepta cualquier mensaje que
+// traiga la palabra "aprender" junto con "vela"/"velas", sin importar el
+// orden ni las palabras de en medio.
+//
+// Ademas: si la sesion vencio (20 min sin responder) justo cuando el
+// cliente estaba contestando el menu de nivel de taller ("1. Nunca he
+// hecho velas...", "2. Ya hago velas...", etc.), su respuesta llega sin
+// ningun estado activo y cae en detectInterest. Frases como "1. Me
+// gustaria aprender de cero" no traen "vela" para nada, asi que se
+// quedaban sin reconocer y el bot no respondia nada. Se agrega el mismo
+// vocabulario que ya usa workshopLevel() para el nivel (cero -- cubre
+// "desde cero" Y la variante coloquial sin la "s", "de cero" -- tecnicas
+// nuevas, personalizada) combinado con "aprender", para que estas
+// respuestas tardias tambien reinicien el flujo de talleres en vez de
+// quedar en silencio.
+function mentionsTalleres(text) {
+  return (
+    containsAny(text, ['taller', 'curso', 'masterclass', 'aprender velas', 'aprender hacer velas', 'aprender a hacer velas', 'hacer velas']) ||
+    (containsWord(text, ['aprender']) && (containsWord(text, ['vela', 'velas', 'cero']) || containsAny(text, ['nunca he hecho', 'tecnicas nuevas', 'clase personalizada'])))
+  );
+}
+function mentionsExperiencia(text) {
+  return containsAny(text, ['experiencia', 'plan con amigas', 'plan en pareja', 'hacer una vela juntos']);
+}
 function detectInterest(text, loose = false) {
   // Club Creativo (antes opcion 6) esta comentado: no se esta ofreciendo
   // por ahora, asi que el menu principal quedo con 5 opciones.
   const num = loose ? numbered(text, 5) : numberedExact(text, 5);
   if (num) return ['talleres', 'experiencia', 'insumos', 'regalos', 'recordatorios' /* , 'club' */][num - 1];
-  // "aprender velas" como frase exacta se quedaba corto: no reconocia
-  // variantes reales como "aprender hacer velas" o "aprender a hacer
-  // velas" (el "hacer"/"a hacer" de en medio rompia el match de
-  // substring). Se agregan esas variantes y, como respaldo, se acepta
-  // cualquier mensaje que traiga la palabra "aprender" junto con
-  // "vela"/"velas", sin importar el orden ni las palabras de en medio.
-  //
-  // Ademas: si la sesion vencio (20 min sin responder) justo cuando el
-  // cliente estaba contestando el menu de nivel de taller ("1. Nunca he
-  // hecho velas...", "2. Ya hago velas...", etc.), su respuesta llega sin
-  // ningun estado activo y cae aca. Frases como "1. Me gustaria aprender
-  // de cero" no traen "vela" para nada, asi que se quedaban sin
-  // reconocer y el bot no respondia nada. Se agrega el mismo vocabulario
-  // que ya usa workshopLevel() para el nivel (cero -- cubre "desde cero"
-  // Y la variante coloquial sin la "s", "de cero" -- tecnicas nuevas,
-  // personalizada) combinado con "aprender", para que estas respuestas
-  // tardias tambien reinicien el flujo de talleres en vez de quedar en
-  // silencio.
-  if (
-    containsAny(text, ['taller', 'curso', 'masterclass', 'aprender velas', 'aprender hacer velas', 'aprender a hacer velas', 'hacer velas']) ||
-    (containsWord(text, ['aprender']) && (containsWord(text, ['vela', 'velas', 'cero']) || containsAny(text, ['nunca he hecho', 'tecnicas nuevas', 'clase personalizada'])))
-  ) return 'talleres';
-  if (containsAny(text, ['experiencia', 'plan con amigas', 'plan en pareja', 'hacer una vela juntos'])) return 'experiencia';
+  if (mentionsTalleres(text)) return 'talleres';
+  if (mentionsExperiencia(text)) return 'experiencia';
   if (containsAny(text, ['insumo', 'fragancia', 'cera', 'pabilo', 'molde', 'colorante'])) return 'insumos';
   if (containsAny(text, ['bouquet', 'vela aromatica', 'vela decorativa', 'difusor', 'kit de regalo', 'regalo'])) return 'regalos';
   if (containsAny(text, ['recordatorio', 'matrimonio', 'baby shower', '15 anos', 'bautizo'])) return 'recordatorios';
@@ -617,6 +623,30 @@ function startExperience(chatId) {
       'Para personalizarla, cuéntame: ¿que ocasion quieren compartir o celebrar?',
     ].join('\n'),
     imagePath: getImagePath('experience.jpg'),
+  };
+}
+// Cuando el mensaje menciona Talleres Y Experiencia a la vez (ej. "no hay
+// talleres mas cortos o experiencia mas cortas"), antes detectInterest()
+// devolvia un solo tema (siempre "talleres", por venir primero en el
+// chequeo) y el otro que tambien pidio quedaba completamente ignorado. En
+// vez de adivinar cual de los dos le interesa mas, se manda un resumen
+// breve de ambos para que ella misma elija.
+function bothInterestsSummary(chatId) {
+  addTag(chatId, 'Talleres');
+  addTag(chatId, 'Experiencia');
+  updateProfile(chatId, { status: 'Definiendo entre Talleres y Experiencia' });
+  setSession(chatId, 'talleres_or_experience_choice');
+  const w = KB.workshops.basicGroup;
+  const e = KB.experience;
+  return {
+    reply: [
+      'Tenemos dos opciones que te pueden interesar: 🌿',
+      '',
+      `1. 🎓 *Talleres*: aprendes a hacer velas, desde cero o con tecnicas avanzadas. Desde ${money(w.price)} por persona.`,
+      `2. ✨ *${e.name}*: un espacio de ${e.duration.toLowerCase()} para crear y compartir, con tu propia vela artesanal de recuerdo. Desde ${money(e.pricePerPerson)} por persona.`,
+      '',
+      '¿Cual de las dos te interesa mas?',
+    ].join('\n'),
   };
 }
 function isBirthday(text) { return containsAny(text, ['cumple', 'cumpleanos', 'cumpleaños']); }
@@ -1010,6 +1040,12 @@ function handleState(chatId, text, meta = {}) {
     setSession(chatId, 'awaiting_interest', { needsName: true });
     return handleState(chatId, text, meta);
   }
+  if (state === 'talleres_or_experience_choice') {
+    const n = numbered(text, 2);
+    if (n === 1 || mentionsTalleres(text)) return startTalleres(chatId);
+    if (n === 2 || mentionsExperiencia(text)) return startExperience(chatId);
+    return retry(chatId, '¿Cual te interesa mas? 1. Talleres  2. Experiencia');
+  }
   if (state === 'awaiting_interest') {
     // El atajo por taller especifico se revisa antes que la categoria
     // generica: frases como "clases personalizadas" no traen ninguna de
@@ -1023,6 +1059,9 @@ function handleState(chatId, text, meta = {}) {
       if (shortcut === 'advanced') return advancedInfo(chatId);
       if (shortcut === 'personalized') return personalizedInfo(chatId);
     }
+    // Igual que en el bloque sin estado: si menciona Talleres Y Experiencia
+    // a la vez, se manda el resumen de ambos en vez de escoger uno solo.
+    if (mentionsTalleres(text) && mentionsExperiencia(text)) return bothInterestsSummary(chatId);
     const i = detectInterest(text, true); // aca si se le acaba de mostrar el menu principal
     if (!i) return { reply: 'Cuéntame un poco más: ¿buscas talleres, una experiencia, insumos, velas y regalos o recordatorios?' };
     if (i === 'talleres') return startTalleres(chatId);
@@ -1455,6 +1494,26 @@ function handleConversationInner(chatId, text, meta = {}) {
     const greeting = isGreeting(text);
     const shortcut = detectWorkshopShortcut(text);
     const interest = detectInterest(text);
+    // Si el mensaje menciona Talleres Y Experiencia a la vez (ej. "no hay
+    // talleres mas cortos o experiencia mas cortas"), detectInterest solo
+    // devuelve un tema (talleres, por venir primero en su chequeo) y el
+    // otro que tambien pidio quedaba completamente ignorado, mandando solo
+    // la info de talleres. Se revisa esto ANTES que el combo de abajo
+    // (que solo maneja un tema a la vez) para ofrecer un resumen breve de
+    // ambos y dejar que ella elija, en vez de adivinar mal.
+    if (mentionsTalleres(text) && mentionsExperiencia(text)) {
+      const profile = getContactProfile(chatId);
+      const result = bothInterestsSummary(chatId);
+      if (!profile?.nombre) setSession(chatId, 'talleres_or_experience_choice', { needsName: true });
+      let combined = result;
+      if (greeting) {
+        const greetLine = profile?.nombre ? `¡Hola de nuevo, ${firstName(chatId)}! 🌿` : '¡Hola! 🌿';
+        combined = { ...result, reply: `${greetLine}\n${result.reply}` };
+      }
+      const updated = getSession(chatId);
+      if (updated) setSession(chatId, updated.state, { lastPrompt: combined.reply });
+      return combined;
+    }
     // Si el primer mensaje trae un saludo Y de una vez lo que necesita
     // ("Hola, quiero información de talleres"), no tiene sentido hacerlo
     // esperar a dar su nombre antes de contarle lo que pidio: se le
