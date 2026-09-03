@@ -85,6 +85,16 @@ function isBotCurrentlySendingTo(chatId) {
   return botSendingTo.has(chatId);
 }
 
+// Respaldo mas confiable que el de arriba: en vez de comparar el chatId del
+// eco (msg.to), que para mensajes con imagen/PDF a veces vuelve en un
+// formato distinto al que se uso para enviar (ej. el numero real @c.us en
+// vez del @lid con el que se envio), se guarda el ID EXACTO de cada mensaje
+// que el bot mismo mando. El eco de ese mismo mensaje trae identico
+// msg.id._serialized sin importar como venga representado el chat, asi que
+// esta comparacion no depende de esa representacion.
+const botSentMessageIds = new Set();
+const BOT_SENT_ID_GRACE_MS = 15000;
+
 // Único punto para enviar mensajes salientes (respuestas directas,
 // seguimientos automáticos, recordatorio de pago, resumen al asesor).
 // SIEMPRE se debe usar esta función en vez de client.sendMessage()
@@ -92,7 +102,13 @@ function isBotCurrentlySendingTo(chatId) {
 async function sendWhatsappMessage(chatId, content, options) {
   markBotSending(chatId);
   try {
-    return await client.sendMessage(chatId, content, options);
+    const sent = await client.sendMessage(chatId, content, options);
+    const sentId = sent?.id?._serialized;
+    if (sentId) {
+      botSentMessageIds.add(sentId);
+      setTimeout(() => botSentMessageIds.delete(sentId), BOT_SENT_ID_GRACE_MS);
+    }
+    return sent;
   } finally {
     markBotSendDone(chatId);
   }
@@ -282,10 +298,19 @@ client.on('message_create', async (msg) => {
     // msg.to es el chat del cliente cuando el mensaje lo escribiste tú
     // (msg.from en ese caso es tu propio número, no sirve como chatId).
     const customerChatId = msg.to;
+    const sentId = msg.id?._serialized;
 
     // Esta es la propia respuesta automática del bot (recién enviada con
     // sendWhatsappMessage), no una intervención tuya: no debe pausar nada.
-    if (isBotCurrentlySendingTo(customerChatId)) {
+    // Se revisa primero por el ID exacto del mensaje (mas confiable: no
+    // depende de que msg.to venga representado igual que el chatId con el
+    // que se mando -- con imagenes/PDF a veces vuelve distinto, ej. el
+    // numero real en vez del @lid, y eso hacia que este chequeo fallara
+    // en silencio y terminara pausando el bot como si hubieras
+    // intervenido manualmente). isBotCurrentlySendingTo queda de respaldo
+    // por si el ID no estuviera disponible por algun motivo.
+    if ((sentId && botSentMessageIds.has(sentId)) || isBotCurrentlySendingTo(customerChatId)) {
+      if (sentId) botSentMessageIds.delete(sentId);
       console.log(`↩️ Ignorado: es una respuesta automática del bot para ${customerChatId}, no una intervención manual.`);
       return;
     }
